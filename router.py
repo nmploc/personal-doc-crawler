@@ -8,9 +8,8 @@ logger = logging.getLogger(__name__)
 
 
 class Backend(str, Enum):
-    HYBRID = "hybrid"          # Pipeline 2-Stage: PP-Structure/PaddleOCR + Dual-VLM (Qwen + Gemini)
+    HYBRID = "hybrid"          # Pipeline 2-Stage: PP-Structure/PaddleOCR + Gemini
     PADDLEOCR = "paddleocr"    # Local PP-Structure / OCR & Layout parsing
-    QWEN = "qwen"              # Direct VLM OCR bằng Qwen2.5-VL
     GEMINI = "gemini"          # Direct VLM OCR bằng Gemini 3.5 Flash
     DOCLING = "docling"        # Local Document layout parsing
     MARKITDOWN = "markitdown"  # Trích xuất nhanh Office & PDF text chuẩn

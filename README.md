@@ -1,4 +1,4 @@
-# Personal Doc Crawler – Hệ Thống Hybrid OCR & Dual-VLM Cross-Verification
+# Personal Doc Crawler – Hệ Thống Hybrid OCR & VLM Verification
 
 > **Giải pháp trích xuất, phân tích bố cục và chuyển đổi tài liệu đa định dạng (PDF scan, Office, Hình ảnh phức tạp) sang Markdown cấu trúc chuẩn cho AI & RAG.**
 
@@ -10,8 +10,8 @@
 
 * **Tự Động Quét Phần Cứng (Hardware Auto-Profiling):** Hệ thống tự động kiểm tra tài nguyên máy tính (CPU cores, dung lượng RAM khả dụng, GPU NVIDIA/CUDA). Nếu cấu hình máy tính quá yếu (RAM < 4GB hoặc CPU < 2 cores), hệ thống sẽ **đưa ra cảnh báo và tự động bỏ qua thiết lập OCR cục bộ, chuyển 100% sang Online VLM OCR**.
 * **Stage 1 (PP-Structure & Specialized Document Parsing):** Sử dụng **PP-Structure / PaddleOCR** (hoặc MarkItDown / Docling) bóc tách bố cục đa cột, bảng biểu (chuyển trực tiếp sang Markdown Table), công thức toán học và tách từng trang tài liệu thành hình ảnh chất lượng cao.
-* **Stage 2 (Dual-VLM Parallel Cross-Verification & Auto-Failover):** Sử dụng song song cả **Qwen2.5-VL** (chuyên sâu vision document, kiểm tra cú pháp OCR) và **Gemini 3.5 Flash** (suy luận thị giác tốc độ cao, sửa lỗi chính tả và chuẩn hóa bảng/LaTeX).
-* **Cơ Chế Tự Động Chuyển Vùng (Auto-Failover):** Nếu một trong hai model VLM gặp sự cố trong phiên làm việc (timeout, lỗi 429 quota, ngắt mạng, hoặc chưa cấu hình API key), hệ thống sẽ **tự động chuyển tiếp sang model còn lại** để hoàn tất quá trình verify mà không làm gián đoạn toàn bộ batch tài liệu.
+* **Stage 2 (VLM Verification):** Sử dụng **Gemini 3.5 Flash** (suy luận thị giác tốc độ cao, sửa lỗi chính tả và chuẩn hóa bảng/LaTeX).
+* **Cơ Chế Tự Động Failover:** Nếu quá trình xử lý gặp sự cố, hệ thống sẽ cố gắng tự động dùng các engine OCR khác làm dự phòng để hoàn tất quá trình mà không làm gián đoạn toàn bộ batch tài liệu.
 * **Chuẩn Hóa RAG Ready:** Tự động sinh **YAML Frontmatter** chứa đầy đủ metadata (nguồn file, số trang, token estimate, model pipeline) và làm sạch bảng Markdown, công thức toán LaTeX ($...$, $$...$$).
 
 ---
@@ -36,23 +36,10 @@ flowchart TD
     H --> J
     I --> J
     
-    J --> K{Stage 2: Dual-VLM Cross-Verification}
+    J --> K[Stage 2: Gemini 3.5 Flash Verification]
     
-    subgraph Parallel Stage 2 & Auto-Failover Engine
-        K --> L[Nhánh A: Qwen2.5-VL Refiner]
-        K --> M[Nhánh B: Gemini 3.5 Flash Refiner]
-        
-        L -->|Thành công| N{Cross-Check & Consensus}
-        L -->|Timeout / 429 / Chưa có key| O[Tự động dùng Gemini B]
-        
-        M -->|Thành công| N
-        M -->|Timeout / 429 / Chưa có key| P[Tự động dùng Qwen A]
-        
-        N -->|Cả 2 phản hồi| Q[Đối chiếu & Chuẩn hóa cú pháp]
-        O --> R[Markdown Hoàn Chỉnh]
-        P --> R
-        Q --> R
-    end
+    K -->|Thành công| R[Markdown Hoàn Chỉnh]
+    K -->|Lỗi| R
     
     R --> S[Gắn YAML Frontmatter Metadata cho RAG]
     S --> T[Lưu file .md tại output/ten_file/ten_file-date.md]
@@ -77,9 +64,8 @@ personal-doc-crawler/
 │   ├── markitdown_backend.py     # Trích xuất nhanh Office (docx/xlsx/pptx)
 │   ├── docling_backend.py        # Xử lý PDF layout phức tạp offline
 │   ├── paddleocr_backend.py      # PP-Structure bóc tách bảng & layout, render PDF
-│   ├── qwen_vl_backend.py        # Tích hợp Qwen2.5-VL (OpenAI API compatible)
 │   ├── gemini_vision_backend.py  # Tích hợp Google Gemini 3.5 Flash
-│   ├── vlm_verifier.py           # Điều phối chạy song song & Auto-Failover
+│   ├── vlm_verifier.py           # Quản lý verification bằng Gemini
 │   └── hybrid_pipeline.py        # Quản lý chuỗi 2-Stage & sinh Frontmatter RAG
 ├── test_docs/                    # Thư mục chứa tài liệu mẫu thử nghiệm
 └── output/                       # Nơi lưu trữ file Markdown kết quả
@@ -136,30 +122,8 @@ GEMINI_API_KEY=AIzaSy...
 GEMINI_MODEL=gemini-3.5-flash
 
 # ==============================================================================
-# 2. CẤU HÌNH QWEN2.5-VL (Hỗ trợ Alibaba DashScope, OpenRouter, vLLM, Ollama)
+# 2. CẤU HÌNH TIMEOUT
 # ==============================================================================
-# Nếu dùng Alibaba DashScope API (Lấy key tại https://bailian.console.aliyun.com/):
-QWEN_VL_API_KEY=sk-...
-QWEN_VL_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-QWEN_VL_MODEL=qwen2.5-vl-72b-instruct
-
-# Hoặc nếu dùng OpenRouter:
-# QWEN_VL_BASE_URL=https://openrouter.ai/api/v1
-# QWEN_VL_MODEL=qwen/qwen-2.5-vl-72b-instruct
-
-# Hoặc nếu chạy Local vLLM / Ollama:
-# QWEN_VL_BASE_URL=http://localhost:11434/v1
-# QWEN_VL_API_KEY=ollama
-# QWEN_VL_MODEL=qwen2.5-vl:7b
-
-# ==============================================================================
-# 3. CHẾ ĐỘ ĐỐI CHIẾU VÀ TỰ ĐỘNG FAILOVER (STAGE 2)
-# ==============================================================================
-# "parallel": Chạy song song cả Qwen & Gemini (Auto-Failover nếu 1 bên lỗi)
-# "fallback": Thử Qwen trước, nếu lỗi chuyển tiếp sang Gemini
-# "qwen_only": Chỉ dùng Qwen2.5-VL verify
-# "gemini_only": Chỉ dùng Gemini 3.5 Flash verify
-VLM_VERIFY_MODE=parallel
 VLM_TIMEOUT_SECONDS=45
 ENABLE_RAG_METADATA=true
 
@@ -187,32 +151,7 @@ python main.py "./test_docs/hop-dong-scan.pdf"
 python main.py "./test_docs/"
 ```
 
----
 
-### 6.2. Lựa Chọn Chế Độ Kiểm Tra Chéo ở Stage 2 (`--verify-mode`)
-
-Bạn có thể linh hoạt chọn cách thức phối hợp giữa **Qwen2.5-VL** và **Gemini 3.5 Flash**:
-
-* **Đối chiếu song song + Tự động Failover (Khuyến nghị cho chất lượng cao nhất):**
-  ```bash
-  python main.py "./docs/tai-lieu-khoa-hoc.pdf" --verify-mode parallel
-  ```
-  *(Gửi request đồng thời tới cả 2 model. Nếu 1 bên bận/hết quota/timeout, tự động dùng kết quả model còn lại).*
-
-* **Chế độ Tuần Tự (Ưu tiên Qwen trước, Gemini làm dự phòng):**
-  ```bash
-  python main.py "./docs/tai-lieu-khoa-hoc.pdf" --verify-mode fallback
-  ```
-
-* **Chỉ sử dụng Qwen2.5-VL để verify:**
-  ```bash
-  python main.py "./docs/bang-ke.pdf" --verify-mode qwen_only
-  ```
-
-* **Chỉ sử dụng Gemini 3.5 Flash để verify:**
-  ```bash
-  python main.py "./docs/bang-ke.pdf" --verify-mode gemini_only
-  ```
 
 ---
 
@@ -249,11 +188,6 @@ Khi không có kết nối Internet hoặc muốn xử lý hàng ngàn trang tà
   python main.py "./docs/anh-chup.jpg" --backend gemini
   ```
 
-* **Ép dùng Qwen2.5-VL trực tiếp:**
-  ```bash
-  python main.py "./docs/anh-chup.jpg" --backend qwen
-  ```
-
 ---
 
 ### 6.5. Các Tùy Chọn Bổ Trợ Quan Trọng
@@ -275,8 +209,8 @@ Ví dụ nội dung file Markdown đầu ra:
 source_file: bao-cao-tai-chinh.pdf
 converted_at: 2026-08-19T22:50:02.123456
 pipeline: hybrid-2stage
-stage1_engine: pp-structure-vl
-stage2_verifier: "qwen2.5-vl + gemini-3.5-flash (parallel cross-verified)"
+stage1_engine: paddleocr-vl
+stage2_verifier: "gemini-3.5-flash"
 total_pages: 2
 word_count: 530
 ---
@@ -307,9 +241,8 @@ $$\sigma^2 = \sum_{i=1}^{n} p_i (x_i - \mu)^2 \quad \text{với} \quad \mu = \ma
 | Tình huống sự cố | Cơ chế xử lý của hệ thống |
 | :--- | :--- |
 | **Cấu hình máy tính quá yếu (RAM < 4GB)** | Hệ thống tự động bỏ qua khởi tạo PaddleOCR/PP-Structure để tránh tràn bộ nhớ (OOM) và tự chuyển sang **Online VLM OCR**. |
-| **Qwen API hết quota / timeout / chưa cấu hình key** | Hệ thống ghi log cảnh báo và **ngay lập tức sử dụng kết quả verify từ Gemini 3.5 Flash**. |
-| **Gemini báo lỗi Rate Limit 429 (Resource Exhausted)** | Hệ thống tự động kích hoạt **kết quả verify từ Qwen2.5-VL** hoặc retry với exponential backoff. |
-| **Cả 2 VLM đều không phản hồi** | Hệ thống tự động sử dụng bản nháp sạch từ **Stage 1 (PP-Structure / Docling)** mà không làm dừng chương trình. |
+| **Gemini báo lỗi Rate Limit 429 (Resource Exhausted)** | Hệ thống ghi log cảnh báo và retry với exponential backoff. |
+| **VLM không phản hồi** | Hệ thống tự động sử dụng bản nháp sạch từ **Stage 1 (PP-Structure / Docling)** mà không làm dừng chương trình. |
 | **PDF chứa font CID / font nhúng lỗi** | Bộ Router tự động nhận diện và chuyển hướng sang pipeline OCR hình ảnh. |
 | **Lỗi font chữ tiếng Việt trên console Windows** | Hệ thống tự động kích hoạt chế độ UTF-8 stream output để hiển thị chuẩn xác tiếng Việt. |
 

@@ -16,7 +16,6 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 from config import (
     OUTPUT_DIR,
     MAX_CONCURRENCY,
-    VLM_VERIFY_MODE,
     ENABLE_RAG_METADATA,
 )
 from hardware_checker import get_system_hardware, HardwareProfile
@@ -25,7 +24,6 @@ from backends import (
     parse_with_markitdown,
     parse_with_docling,
     parse_with_gemini,
-    parse_with_qwen,
     parse_with_paddleocr,
     run_hybrid_pipeline,
 )
@@ -34,7 +32,6 @@ from backends import (
 def _exec_backend(
     b: Backend,
     path: Path,
-    verify_mode: str,
     enable_rag: bool,
     skip_stage2: bool,
 ) -> str:
@@ -42,15 +39,13 @@ def _exec_backend(
     if b == Backend.HYBRID:
         return run_hybrid_pipeline(
             path,
-            verify_mode=verify_mode,
             enable_rag=enable_rag,
             skip_stage2=skip_stage2,
         )
     elif b == Backend.PADDLEOCR:
         md, _ = parse_with_paddleocr(path)
         return md
-    elif b == Backend.QWEN:
-        return parse_with_qwen(path)
+
     elif b == Backend.GEMINI:
         return parse_with_gemini(path)
     elif b == Backend.DOCLING:
@@ -65,8 +60,7 @@ def _exec_backend(
 FALLBACK_CHAIN = {
     Backend.HYBRID: [Backend.GEMINI, Backend.DOCLING],
     Backend.PADDLEOCR: [Backend.GEMINI, Backend.DOCLING],
-    Backend.QWEN: [Backend.GEMINI],
-    Backend.GEMINI: [Backend.QWEN],
+    Backend.GEMINI: [Backend.MARKITDOWN],
     Backend.MARKITDOWN: [Backend.DOCLING, Backend.GEMINI],
     Backend.DOCLING: [Backend.GEMINI],
 }
@@ -86,7 +80,7 @@ def process_file(
     mode: str,
     force_backend: Optional[Backend],
     pdf_is_scanned: bool,
-    verify_mode: str,
+
     enable_rag: bool,
     skip_stage2: bool,
     overwrite: bool = False,
@@ -109,7 +103,6 @@ def process_file(
             content = _exec_backend(
                 b,
                 input_path,
-                verify_mode=verify_mode,
                 enable_rag=enable_rag,
                 skip_stage2=skip_stage2,
             )
@@ -127,7 +120,7 @@ def run_batch(
     mode: str,
     force_backend: Optional[Backend],
     pdf_is_scanned: bool,
-    verify_mode: str,
+
     enable_rag: bool,
     skip_stage2: bool,
     overwrite: bool = False,
@@ -141,7 +134,7 @@ def run_batch(
                 mode,
                 force_backend,
                 pdf_is_scanned,
-                verify_mode,
+
                 enable_rag,
                 skip_stage2,
                 overwrite,
@@ -166,7 +159,7 @@ def collect_files(target: Path) -> list[Path]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Personal Doc Crawler – Hybrid OCR (PP-Structure/PaddleOCR) & Dual-VLM Cross-Verification (Qwen2.5-VL + Gemini 3.5 Flash)"
+        description="Personal Doc Crawler – Hybrid OCR (PP-Structure/PaddleOCR) & VLM Verification (Gemini 3.5 Flash)"
     )
     parser.add_argument("path", help="File hoặc thư mục cần xử lý")
     parser.add_argument(
@@ -175,12 +168,7 @@ def main():
         default="hybrid",
         help="Chế độ xử lý: hybrid (mặc định: 2-stage), fast (offline local), vlm (direct VLM), auto (tự động)",
     )
-    parser.add_argument(
-        "--verify-mode",
-        choices=["parallel", "fallback", "qwen_only", "gemini_only"],
-        default=VLM_VERIFY_MODE,
-        help="Chế độ kiểm tra chéo ở Stage 2: parallel (song song đối chiếu + auto failover), fallback (Qwen -> Gemini), qwen_only, gemini_only",
-    )
+
     parser.add_argument(
         "--backend",
         choices=[b.value for b in Backend],
@@ -218,7 +206,7 @@ def main():
     hw: HardwareProfile = get_system_hardware()
 
     print("=================================================================")
-    print("       PERSONAL DOC CRAWLER – HYBRID OCR & DUAL-VLM SYSTEM       ")
+    print("       PERSONAL DOC CRAWLER – HYBRID OCR & VLM SYSTEM       ")
     print("=================================================================")
     print(f"[*] PHẦN CỨNG: {hw.cpu_count} CPU Cores | RAM: {hw.total_ram_gb} GB (Khả dụng: {hw.available_ram_gb} GB)")
     if hw.has_cuda and hw.gpu_name:
@@ -227,7 +215,7 @@ def main():
     if not hw.is_capable_for_local_ocr:
         print(f"\n[!] CẢNH BÁO PHẦN CỨNG: {hw.warning_reason}")
         print(f"[!] Máy tính có cấu hình yếu -> ĐÃ BỎ QUA thiết lập Local PaddleOCR/PP-Structure.")
-        print(f"[!] Hệ thống TỰ ĐỘNG CHUYỂN 100% SANG ONLINE VLM OCR (Gemini 3.5 Flash / Qwen2.5-VL).\n")
+        print(f"[!] Hệ thống TỰ ĐỘNG CHUYỂN 100% SANG ONLINE VLM OCR (Gemini 3.5 Flash).\n")
     else:
         print(f"[*] CẤU HÌNH PP-STRUCTURE: {hw.status_summary}\n")
 
@@ -240,7 +228,7 @@ def main():
 
     print(f"- Tìm thấy: {len(files)} file cần xử lý")
     print(f"- Chế độ (Mode): {args.mode}")
-    print(f"- Chế độ Verify (Stage 2): {args.verify_mode}")
+
     print(f"- RAG Metadata: {args.rag_metadata}")
     print(f"- Bỏ qua Stage 2: {args.no_refine}")
     print("Bắt đầu xử lý...\n")
@@ -251,7 +239,6 @@ def main():
         mode=args.mode,
         force_backend=force,
         pdf_is_scanned=args.scanned,
-        verify_mode=args.verify_mode,
         enable_rag=args.rag_metadata,
         skip_stage2=args.no_refine,
         overwrite=args.overwrite,

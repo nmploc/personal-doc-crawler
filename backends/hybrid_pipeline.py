@@ -1,7 +1,7 @@
 import datetime
 from pathlib import Path
 from typing import List, Tuple
-from config import ENABLE_RAG_METADATA, VLM_VERIFY_MODE
+from config import ENABLE_RAG_METADATA
 from backends.paddleocr_backend import parse_with_paddleocr, render_pdf_to_images, load_image_bytes
 from backends.vlm_verifier import verify_and_refine
 
@@ -34,14 +34,13 @@ def _generate_frontmatter(
 
 def run_hybrid_pipeline(
     input_path: Path,
-    verify_mode: str = VLM_VERIFY_MODE,
     enable_rag: bool = ENABLE_RAG_METADATA,
     skip_stage2: bool = False,
 ) -> str:
     """
     Quy trình Hybrid 2-Stage hoàn chỉnh:
     - Stage 1: Bóc tách OCR & bố cục bằng PaddleOCR-VL (sinh draft markdown + ảnh các trang).
-    - Stage 2: Đối chiếu song song Qwen2.5-VL & Gemini 3.5 Flash (Auto-failover nếu 1 bên lỗi).
+    - Stage 2: Hiệu đính và kiểm tra lại bằng Gemini 3.5 Flash.
     - Xuất Markdown hoàn chỉnh chuẩn hóa cho AI/RAG.
     """
     ext = input_path.suffix.lower()
@@ -70,11 +69,10 @@ def run_hybrid_pipeline(
                 else draft_markdown
             )
 
-            # Thực hiện kiểm tra chéo song song & auto-failover
+            # Thực hiện kiểm tra bằng Gemini
             refined_page_md, verifier_info = verify_and_refine(
                 image_input=img_bytes,
                 draft_markdown=page_draft,
-                mode=verify_mode,
             )
 
             verified_pages.append(refined_page_md)
