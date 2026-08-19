@@ -134,7 +134,16 @@ Nội dung cấu hình chi tiết trong `.env`:
 # ==============================================================================
 # 1. CẤU HÌNH GOOGLE GEMINI (Lấy key tại: https://aistudio.google.com/apikey)
 # ==============================================================================
+# Người dùng phổ thông (mặc định 1 key)
 GEMINI_API_KEY=AIzaSy...
+
+# Dành cho nhà phát triển (Sử dụng luân phiên nhiều Free-Tier keys):
+# Bạn có thể khai báo nhiều dòng GEMINI_API_KEY. Hệ thống sẽ tự động luân phiên
+# (fallback) sang key tiếp theo nếu key hiện tại hết quota (hoặc báo lỗi 429).
+# GEMINI_API_KEY=Key_Thứ_1...
+# GEMINI_API_KEY=Key_Thứ_2...
+# GEMINI_API_KEY=Key_Thứ_3...
+
 GEMINI_MODEL=gemini-3.5-flash
 
 # ==============================================================================

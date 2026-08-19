@@ -4,8 +4,26 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- API Keys & Models ---
-# Gemini API
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+# Tự động đọc tất cả các GEMINI_API_KEY từ file .env để hỗ trợ luân phiên (fallback)
+def _load_gemini_keys():
+    keys = []
+    if os.path.exists(".env"):
+        with open(".env", "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("GEMINI_API_KEY="):
+                    val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    if val and val != "your_gemini_api_key_here":
+                        keys.append(val)
+    # Lấy thêm từ biến môi trường (nếu có)
+    env_val = os.getenv("GEMINI_API_KEY", "").strip()
+    if env_val and env_val != "your_gemini_api_key_here" and env_val not in keys:
+        keys.append(env_val)
+    # Trả về danh sách duy nhất, giữ nguyên thứ tự
+    return list(dict.fromkeys(keys))
+
+GEMINI_API_KEYS = _load_gemini_keys()
+GEMINI_API_KEY = GEMINI_API_KEYS[0] if GEMINI_API_KEYS else ""
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")  # gemini-3.5-flash / gemini-2.5-flash / gemini-3.5-pro
 
 
