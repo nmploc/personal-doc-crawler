@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 setlocal EnableDelayedExpansion
 chcp 65001 >nul
 color 0A
