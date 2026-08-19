@@ -1,0 +1,43 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C environments & Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables & API keys (CRITICAL - DO NOT COMMIT)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Output directories & artifacts
+output/
+*.log
+
+# Editor & IDE directories
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Operating System files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Testing and temporary files
+scratch/
+.pytest_cache/

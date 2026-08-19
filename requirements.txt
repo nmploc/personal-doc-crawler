@@ -1,0 +1,31 @@
+# ==============================================================================
+# CORE & ENVIRONMENT
+# ==============================================================================
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+pydantic>=2.0.0
+
+# ==============================================================================
+# DOCUMENT & PDF EXTRACTION (STAGE 1 ENGINES)
+# ==============================================================================
+markitdown[all]>=0.0.1a4
+docling>=2.0.0
+pymupdf>=1.24.0
+pillow>=10.0.0
+
+# ==============================================================================
+# VLM VISION-LANGUAGE CLIENTS (STAGE 2 VERIFIERS)
+# ==============================================================================
+google-genai>=1.0.0       # Official SDK cho Gemini 3.5 Flash / 2.5 Flash
+openai>=1.30.0             # Hỗ trợ Qwen2.5-VL qua DashScope / OpenRouter / vLLM / Ollama
+
+# ==============================================================================
+# TÙY CHỌN: PADDLEOCR / PP-STRUCTURE LOCAL (BỎ DẤU # ĐỂ CÀI ĐẶT NẾU CẦN)
+# ==============================================================================
+# 1. Phiên bản CPU:
+# paddlepaddle>=2.6.0
+# paddleocr>=2.7.0
+
+# 2. Hoặc Phiên bản GPU (CUDA 11.8):
+# paddlepaddle-gpu==2.6.0 -f https://www.paddlepaddle.org.cn/whl/windows/mkl/avx/stable.html
+# paddleocr>=2.7.0
