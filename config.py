@@ -8,10 +8,11 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")  # gemini-3.5-flash / gemini-2.5-flash / gemini-3.5-pro
 
-# Qwen2.5-VL API (OpenAI-compatible: DashScope, OpenRouter, vLLM, Ollama, Xinference)
+# Qwen2.5-VL API (OpenAI-compatible: OpenRouter, DashScope, vLLM, Ollama, Xinference)
 QWEN_VL_API_KEY = os.getenv("QWEN_VL_API_KEY", "")
-QWEN_VL_BASE_URL = os.getenv("QWEN_VL_BASE_URL", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
-QWEN_VL_MODEL = os.getenv("QWEN_VL_MODEL", "qwen2.5-vl-72b-instruct")  # hoặc qwen2.5-vl-7b-instruct, qwen/qwen-2.5-vl-72b-instruct
+QWEN_VL_BASE_URL = os.getenv("QWEN_VL_BASE_URL", "https://openrouter.ai/api/v1")
+QWEN_VL_MODEL = os.getenv("QWEN_VL_MODEL", "qwen/qwen2.5-vl-72b-instruct:free")
+QWEN_VL_FALLBACK_MODEL = os.getenv("QWEN_VL_FALLBACK_MODEL", "qwen/qwen2.5-vl-32b-instruct:free")
 
 # --- PaddleOCR / PP-Structure Settings ---
 PADDLE_USE_GPU = os.getenv("PADDLE_USE_GPU", "false").lower() in ("true", "1", "yes")
