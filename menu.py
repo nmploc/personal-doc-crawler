@@ -27,6 +27,12 @@ def run_main(mode_args):
         print(f"\n[!] Lỗi: Không tìm thấy đường dẫn '{path}'")
         input("Nhấn Enter để tiếp tục...")
         return
+        
+    p = Path(path)
+    if p.is_dir():
+        print(f"\n[*] Đã phát hiện thư mục: Bắt đầu chế độ xử lý theo lô (Batch Mode).")
+        print(f"[*] Kết quả sẽ tự động gom vào: output/{p.name}/")
+        
     cmd = f'python main.py "{path}" {mode_args}'
     os.system(cmd)
     input("\nNhấn Enter để tiếp tục...")

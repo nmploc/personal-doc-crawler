@@ -1,7 +1,8 @@
 import logging
+import zipfile
 from pathlib import Path
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 from hardware_checker import get_system_hardware, HardwareProfile
 
 logger = logging.getLogger(__name__)
@@ -20,24 +21,56 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
 PDF_EXT = ".pdf"
 
 
-def is_scanned_pdf(path: Path, max_check_pages: int = 3) -> bool:
+def analyze_pdf_complexity(path: Path, max_check_pages: int = 5) -> Tuple[bool, bool]:
     """
-    Tự động phát hiện xem PDF có phải là bản scan/ảnh chụp không.
-    Kiểm tra số lượng ký tự văn bản có thể trích xuất trực tiếp bằng PyMuPDF.
+    Phân tích độ phức tạp của PDF. Trả về (is_scanned, is_image_heavy).
+    - is_scanned: Text layer cực mỏng (< 50 ký tự/trang)
+    - is_image_heavy: Có quá nhiều hình ảnh nhúng, cần OCR
     """
     try:
         import fitz
         doc = fitz.open(str(path))
         total_text_len = 0
+        total_images = 0
         pages_to_check = min(len(doc), max_check_pages)
+        
+        if pages_to_check == 0:
+            doc.close()
+            return False, False
+
         for i in range(pages_to_check):
-            total_text_len += len(doc[i].get_text().strip())
+            page = doc[i]
+            total_text_len += len(page.get_text().strip())
+            total_images += len(page.get_images(full=True))
+            
         doc.close()
 
-        # Nếu trung bình mỗi trang ít hơn 50 ký tự -> coi là PDF dạng scan/ảnh chụp
-        return (total_text_len / max(1, pages_to_check)) < 50
+        avg_text = total_text_len / pages_to_check
+        avg_images = total_images / pages_to_check
+        
+        is_scanned = avg_text < 50
+        is_image_heavy = avg_images >= 2.0  # Trung bình từ 2 ảnh/trang trở lên
+        
+        return is_scanned, is_image_heavy
     except Exception as e:
-        logger.debug("Không thể kiểm tra text layer PDF qua fitz: %s", e)
+        logger.debug("Lỗi khi kiểm tra PDF bằng fitz: %s", e)
+        return False, False
+
+
+def analyze_pptx_images(path: Path) -> bool:
+    """
+    Đếm số lượng file trong ppt/media/ (hình ảnh/video) để xem PPTX có nặng về hình ảnh không.
+    Trả về True nếu chứa nhiều hơn 5 media files.
+    """
+    try:
+        if not path.suffix.lower() == ".pptx":
+            return False
+            
+        with zipfile.ZipFile(str(path), 'r') as z:
+            media_files = [f for f in z.namelist() if f.startswith("ppt/media/")]
+            return len(media_files) >= 5
+    except Exception as e:
+        logger.debug("Lỗi khi phân tích zip PPTX: %s", e)
         return False
 
 
@@ -49,7 +82,7 @@ def pick_backend(
 ) -> Backend:
     """
     Định tuyến backend thông minh dựa trên định dạng, đặc tính tài liệu, chế độ (mode)
-    và cấu hình phần cứng thực tế của máy tính.
+    và cấu hình phần cứng.
     """
     if force:
         return force
@@ -58,37 +91,51 @@ def pick_backend(
     mode = (mode or "hybrid").lower()
     hw: HardwareProfile = get_system_hardware()
 
-    # Định dạng Office -> luôn tối ưu nhất qua MarkItDown
-    if ext in OFFICE_EXTS:
-        return Backend.MARKITDOWN
-
-    # Định dạng Hình ảnh
+    # 1. HÌNH ẢNH -> Luôn dùng OCR
     if ext in IMAGE_EXTS:
-        # Nếu cấu hình máy tính quá yếu -> bắt buộc dùng Online VLM
         if not hw.is_capable_for_local_ocr or mode == "vlm":
             return Backend.GEMINI
         if mode == "fast":
             return Backend.PADDLEOCR
         return Backend.HYBRID
 
-    # Định dạng PDF
-    if ext == PDF_EXT:
-        scanned = pdf_is_scanned or is_scanned_pdf(path)
+    # 2. VĂN BẢN ĐƠN GIẢN / EXCEL -> Ưu tiên MarkItDown/Docling, không dùng OCR
+    if ext in {".doc", ".docx", ".xls", ".xlsx"}:
+        return Backend.DOCLING if mode == "fast" else Backend.MARKITDOWN
 
-        # Nếu máy yếu -> không chạy OCR cục bộ nặng
+    # 3. POWERPOINT -> Tự động kiểm tra mật độ hình ảnh
+    if ext in {".ppt", ".pptx"}:
+        # Nếu máy đủ mạnh và chế độ không phải fast/vlm, kiểm tra ảnh
+        if hw.is_capable_for_local_ocr and mode in ("hybrid", "auto"):
+            is_image_heavy = analyze_pptx_images(path)
+            if is_image_heavy:
+                return Backend.HYBRID
+        return Backend.DOCLING if mode == "fast" else Backend.MARKITDOWN
+
+    # 4. PDF -> Phân tích text layer và hình ảnh
+    if ext == PDF_EXT:
+        is_scanned, is_image_heavy = False, False
+        if not pdf_is_scanned:
+            is_scanned, is_image_heavy = analyze_pdf_complexity(path)
+        else:
+            is_scanned = True
+
         if not hw.is_capable_for_local_ocr:
-            return Backend.MARKITDOWN if not scanned else Backend.GEMINI
+            return Backend.GEMINI if is_scanned else Backend.MARKITDOWN
 
         if mode == "fast":
-            return Backend.DOCLING if scanned else Backend.MARKITDOWN
+            return Backend.DOCLING if (is_scanned or is_image_heavy) else Backend.MARKITDOWN
+            
         if mode == "vlm":
             return Backend.GEMINI
+
         if mode == "hybrid":
             return Backend.HYBRID
 
-        # mode == "auto"
-        if scanned:
+        # mode == "auto": Phân loại tự động thông minh nhất
+        if is_scanned or is_image_heavy:
             return Backend.HYBRID
+            
         return Backend.MARKITDOWN
 
     raise ValueError(f"Không có backend mặc định cho định dạng tệp: {ext}")

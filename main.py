@@ -66,13 +66,32 @@ FALLBACK_CHAIN = {
 }
 
 
-def build_output_path(input_path: Path) -> Path:
-    """Template xuất file: output/{filename}/{filename}-{date}.md"""
-    stem = input_path.stem
-    today = date.today().isoformat()
-    folder = Path(OUTPUT_DIR) / stem
-    folder.mkdir(parents=True, exist_ok=True)
-    return folder / f"{stem}-{today}.md"
+def build_output_path(input_path: Path, base_dir: Optional[Path] = None) -> Path:
+    """
+    Tạo đường dẫn xuất file.
+    - Nếu xử lý 1 file lẻ: output/{stem}/{stem}-{date}.md
+    - Nếu xử lý theo lô từ thư mục: output/{tên_thư_mục_gốc}/{rel_path}.md
+    """
+    out_dir = Path(OUTPUT_DIR)
+    
+    if base_dir and base_dir.is_dir():
+        # Lấy tên thư mục gốc làm subfolder
+        batch_folder = out_dir / base_dir.name
+        try:
+            rel_path = input_path.relative_to(base_dir)
+            # Thay đổi phần mở rộng thành .md
+            out_file = batch_folder / rel_path.with_suffix(".md")
+        except ValueError:
+            out_file = batch_folder / f"{input_path.stem}.md"
+            
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        return out_file
+    else:
+        stem = input_path.stem
+        today = date.today().isoformat()
+        folder = out_dir / stem
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder / f"{stem}-{today}.md"
 
 
 def process_file(
@@ -80,12 +99,12 @@ def process_file(
     mode: str,
     force_backend: Optional[Backend],
     pdf_is_scanned: bool,
-
     enable_rag: bool,
     skip_stage2: bool,
     overwrite: bool = False,
+    base_dir: Optional[Path] = None,
 ) -> tuple[Path, str]:
-    out_path = build_output_path(input_path)
+    out_path = build_output_path(input_path, base_dir)
     if not overwrite and out_path.exists() and out_path.stat().st_size > 0:
         return out_path, "ĐÃ CÓ (Bỏ qua)"
 
@@ -120,10 +139,10 @@ def run_batch(
     mode: str,
     force_backend: Optional[Backend],
     pdf_is_scanned: bool,
-
     enable_rag: bool,
     skip_stage2: bool,
     overwrite: bool = False,
+    base_dir: Optional[Path] = None,
 ):
     max_workers = max(MAX_CONCURRENCY.values())
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -134,10 +153,10 @@ def run_batch(
                 mode,
                 force_backend,
                 pdf_is_scanned,
-
                 enable_rag,
                 skip_stage2,
                 overwrite,
+                base_dir,
             ): f
             for f in files
         }
@@ -201,6 +220,8 @@ def main():
     if not target.exists():
         print(f"Lỗi: Đường dẫn '{args.path}' không tồn tại.")
         return
+        
+    base_dir = target if target.is_dir() else None
 
     # 1. Quét phần cứng và tự động cấu hình
     hw: HardwareProfile = get_system_hardware()
@@ -228,6 +249,8 @@ def main():
 
     print(f"- Tìm thấy: {len(files)} file cần xử lý")
     print(f"- Chế độ (Mode): {args.mode}")
+    if base_dir:
+        print(f"- Xử lý theo lô (Batch Mode). Kết quả sẽ gom vào: output/{base_dir.name}/")
 
     print(f"- RAG Metadata: {args.rag_metadata}")
     print(f"- Bỏ qua Stage 2: {args.no_refine}")
@@ -242,6 +265,7 @@ def main():
         enable_rag=args.rag_metadata,
         skip_stage2=args.no_refine,
         overwrite=args.overwrite,
+        base_dir=base_dir,
     )
     print(f"\nHoàn tất trong {time.time() - start:.2f}s")
 
