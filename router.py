@@ -2,13 +2,14 @@ import logging
 from pathlib import Path
 from enum import Enum
 from typing import Optional
+from hardware_checker import get_system_hardware, HardwareProfile
 
 logger = logging.getLogger(__name__)
 
 
 class Backend(str, Enum):
-    HYBRID = "hybrid"          # Pipeline 2-Stage: PaddleOCR + Dual-VLM (Qwen + Gemini)
-    PADDLEOCR = "paddleocr"    # Local OCR & Layout parsing
+    HYBRID = "hybrid"          # Pipeline 2-Stage: PP-Structure/PaddleOCR + Dual-VLM (Qwen + Gemini)
+    PADDLEOCR = "paddleocr"    # Local PP-Structure / OCR & Layout parsing
     QWEN = "qwen"              # Direct VLM OCR bằng Qwen2.5-VL
     GEMINI = "gemini"          # Direct VLM OCR bằng Gemini 3.5 Flash
     DOCLING = "docling"        # Local Document layout parsing
@@ -48,17 +49,15 @@ def pick_backend(
     pdf_is_scanned: bool = False,
 ) -> Backend:
     """
-    Định tuyến backend thông minh dựa trên định dạng, đặc tính tài liệu và chế độ (mode):
-    - mode="hybrid" (mặc định): Kết hợp PaddleOCR Stage 1 + Dual-VLM Cross-Verification Stage 2.
-    - mode="fast": Ưu tiên chạy offline tốc độ cao (MarkItDown cho văn phòng, Docling/PaddleOCR cho PDF).
-    - mode="vlm": Chạy trực tiếp VLM (Gemini / Qwen).
-    - mode="auto": Tự động phân loại tài liệu để chọn phương án tối ưu.
+    Định tuyến backend thông minh dựa trên định dạng, đặc tính tài liệu, chế độ (mode)
+    và cấu hình phần cứng thực tế của máy tính.
     """
     if force:
         return force
 
     ext = path.suffix.lower()
     mode = (mode or "hybrid").lower()
+    hw: HardwareProfile = get_system_hardware()
 
     # Định dạng Office -> luôn tối ưu nhất qua MarkItDown
     if ext in OFFICE_EXTS:
@@ -66,23 +65,28 @@ def pick_backend(
 
     # Định dạng Hình ảnh
     if ext in IMAGE_EXTS:
+        # Nếu cấu hình máy tính quá yếu -> bắt buộc dùng Online VLM
+        if not hw.is_capable_for_local_ocr or mode == "vlm":
+            return Backend.GEMINI
         if mode == "fast":
             return Backend.PADDLEOCR
-        if mode == "vlm":
-            return Backend.GEMINI
         return Backend.HYBRID
 
     # Định dạng PDF
     if ext == PDF_EXT:
         scanned = pdf_is_scanned or is_scanned_pdf(path)
-        
+
+        # Nếu máy yếu -> không chạy OCR cục bộ nặng
+        if not hw.is_capable_for_local_ocr:
+            return Backend.MARKITDOWN if not scanned else Backend.GEMINI
+
         if mode == "fast":
             return Backend.DOCLING if scanned else Backend.MARKITDOWN
         if mode == "vlm":
             return Backend.GEMINI
         if mode == "hybrid":
             return Backend.HYBRID
-        
+
         # mode == "auto"
         if scanned:
             return Backend.HYBRID

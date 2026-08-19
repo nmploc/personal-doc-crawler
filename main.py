@@ -19,6 +19,7 @@ from config import (
     VLM_VERIFY_MODE,
     ENABLE_RAG_METADATA,
 )
+from hardware_checker import get_system_hardware, HardwareProfile
 from router import pick_backend, Backend
 from backends import (
     parse_with_markitdown,
@@ -165,7 +166,7 @@ def collect_files(target: Path) -> list[Path]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Personal Doc Crawler – Hybrid OCR & Dual-VLM Cross-Verification Parser (PaddleOCR + Qwen2.5-VL + Gemini 3.5 Flash)"
+        description="Personal Doc Crawler – Hybrid OCR (PP-Structure/PaddleOCR) & Dual-VLM Cross-Verification (Qwen2.5-VL + Gemini 3.5 Flash)"
     )
     parser.add_argument("path", help="File hoặc thư mục cần xử lý")
     parser.add_argument(
@@ -213,6 +214,23 @@ def main():
         print(f"Lỗi: Đường dẫn '{args.path}' không tồn tại.")
         return
 
+    # 1. Quét phần cứng và tự động cấu hình
+    hw: HardwareProfile = get_system_hardware()
+
+    print("=================================================================")
+    print("       PERSONAL DOC CRAWLER – HYBRID OCR & DUAL-VLM SYSTEM       ")
+    print("=================================================================")
+    print(f"[*] PHẦN CỨNG: {hw.cpu_count} CPU Cores | RAM: {hw.total_ram_gb} GB (Khả dụng: {hw.available_ram_gb} GB)")
+    if hw.has_cuda and hw.gpu_name:
+        print(f"[*] GPU: {hw.gpu_name} ({hw.gpu_vram_gb} GB VRAM) – CUDA: Sẵn sàng")
+    
+    if not hw.is_capable_for_local_ocr:
+        print(f"\n[!] CẢNH BÁO PHẦN CỨNG: {hw.warning_reason}")
+        print(f"[!] Máy tính có cấu hình yếu -> ĐÃ BỎ QUA thiết lập Local PaddleOCR/PP-Structure.")
+        print(f"[!] Hệ thống TỰ ĐỘNG CHUYỂN 100% SANG ONLINE VLM OCR (Gemini 3.5 Flash / Qwen2.5-VL).\n")
+    else:
+        print(f"[*] CẤU HÌNH PP-STRUCTURE: {hw.status_summary}\n")
+
     force = Backend(args.backend) if args.backend else None
     files = collect_files(target)
 
@@ -220,8 +238,7 @@ def main():
         print("Không tìm thấy file hợp lệ.")
         return
 
-    print(f"=== Personal Doc Crawler ===")
-    print(f"- Tìm thấy: {len(files)} file")
+    print(f"- Tìm thấy: {len(files)} file cần xử lý")
     print(f"- Chế độ (Mode): {args.mode}")
     print(f"- Chế độ Verify (Stage 2): {args.verify_mode}")
     print(f"- RAG Metadata: {args.rag_metadata}")

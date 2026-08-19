@@ -8,10 +8,11 @@
 
 **Personal Doc Crawler** kết hợp sức mạnh chuyên biệt của các công cụ Document OCR hàng đầu hiện nay theo **Kiến trúc Hybrid 2-Stage**:
 
-* **Stage 1 (Specialized Document Parsing & Fast OCR):** Sử dụng **PaddleOCR-VL-1.6** (hoặc MarkItDown / Docling) đảm nhiệm nhận dạng bố cục đa cột, bảng biểu, công thức toán học và trích xuất ảnh từng trang.
+* **Tự Động Quét Phần Cứng (Hardware Auto-Profiling):** Hệ thống tự động kiểm tra tài nguyên máy tính (CPU cores, dung lượng RAM khả dụng, GPU NVIDIA/CUDA). Nếu cấu hình máy tính quá yếu (RAM < 4GB hoặc CPU < 2 cores), hệ thống sẽ **đưa ra cảnh báo và tự động bỏ qua thiết lập OCR cục bộ, chuyển 100% sang Online VLM OCR**.
+* **Stage 1 (PP-Structure & Specialized Document Parsing):** Sử dụng **PP-Structure / PaddleOCR** (hoặc MarkItDown / Docling) bóc tách bố cục đa cột, bảng biểu (chuyển trực tiếp sang Markdown Table), công thức toán học và tách từng trang tài liệu thành hình ảnh chất lượng cao.
 * **Stage 2 (Dual-VLM Parallel Cross-Verification & Auto-Failover):** Sử dụng song song cả **Qwen2.5-VL** (chuyên sâu vision document, kiểm tra cú pháp OCR) và **Gemini 3.5 Flash** (suy luận thị giác tốc độ cao, sửa lỗi chính tả và chuẩn hóa bảng/LaTeX).
-* **Cơ chế Tự Động Chuyển Vùng (Auto-Failover):** Nếu một trong hai model VLM gặp sự cố trong phiên làm việc (timeout, lỗi 429 quota, ngắt mạng, hoặc chưa cấu hình API key), hệ thống sẽ **tự động chuyển tiếp sang model còn lại** để hoàn tất quá trình verify mà không làm gián đoạn toàn bộ batch tài liệu.
-* **Chuẩn hóa RAG Ready:** Tự động sinh **YAML Frontmatter** chứa đầy đủ metadata (nguồn file, số trang, token estimate, model pipeline) và làm sạch bảng Markdown, công thức toán LaTeX ($...$, $$...$$).
+* **Cơ Chế Tự Động Chuyển Vùng (Auto-Failover):** Nếu một trong hai model VLM gặp sự cố trong phiên làm việc (timeout, lỗi 429 quota, ngắt mạng, hoặc chưa cấu hình API key), hệ thống sẽ **tự động chuyển tiếp sang model còn lại** để hoàn tất quá trình verify mà không làm gián đoạn toàn bộ batch tài liệu.
+* **Chuẩn Hóa RAG Ready:** Tự động sinh **YAML Frontmatter** chứa đầy đủ metadata (nguồn file, số trang, token estimate, model pipeline) và làm sạch bảng Markdown, công thức toán LaTeX ($...$, $$...$$).
 
 ---
 
@@ -19,36 +20,42 @@
 
 ```mermaid
 flowchart TD
-    A[Tài liệu: PDF / DOCX / XLSX / PPTX / Ảnh Scan] --> B{Router Phân Loại}
+    A[Khởi chạy chương trình] --> B{Hardware Auto-Checker}
+    B -->|RAM < 4GB hoặc CPU yếu| C[Cảnh báo & Chuyển 100% sang Online VLM]
+    B -->|Cấu hình đủ mạnh| D[Tự động bật GPU/CPU MKLDNN cho PP-Structure]
     
-    B -->|Office: docx/xlsx/pptx| C[Stage 1: MarkItDown]
-    B -->|PDF phức tạp / Bảng biểu| D[Stage 1: Docling]
-    B -->|Ảnh Scan / Đa cột / Công thức| E[Stage 1: PaddleOCR-VL]
+    D --> E[Tài liệu: PDF / DOCX / XLSX / Ảnh Scan]
+    C --> E
     
-    C --> F[Draft Markdown + Ảnh các trang]
-    D --> F
-    E --> F
+    E --> F{Router Phân Loại}
+    F -->|Office: docx/xlsx/pptx| G[Stage 1: MarkItDown]
+    F -->|PDF phức tạp / Bảng biểu| H[Stage 1: Docling]
+    F -->|Ảnh Scan / Đa cột / Công thức| I[Stage 1: PP-Structure / PaddleOCR]
     
-    F --> G{Stage 2: Dual-VLM Cross-Verification}
+    G --> J[Draft Markdown + Ảnh các trang]
+    H --> J
+    I --> J
+    
+    J --> K{Stage 2: Dual-VLM Cross-Verification}
     
     subgraph Parallel Stage 2 & Auto-Failover Engine
-        G --> H[Nhánh A: Qwen2.5-VL Refiner]
-        G --> I[Nhánh B: Gemini 3.5 Flash Refiner]
+        K --> L[Nhánh A: Qwen2.5-VL Refiner]
+        K --> M[Nhánh B: Gemini 3.5 Flash Refiner]
         
-        H -->|Thành công| J{Cross-Check & Consensus}
-        H -->|Timeout / 429 / Chưa có key| K[Tự động dùng Gemini B]
+        L -->|Thành công| N{Cross-Check & Consensus}
+        L -->|Timeout / 429 / Chưa có key| O[Tự động dùng Gemini B]
         
-        I -->|Thành công| J
-        I -->|Timeout / 429 / Chưa có key| L[Tự động dùng Qwen A]
+        M -->|Thành công| N
+        M -->|Timeout / 429 / Chưa có key| P[Tự động dùng Qwen A]
         
-        J -->|Cả 2 phản hồi| M[Đối chiếu & Chuẩn hóa cú pháp]
-        K --> N[Markdown Hoàn Chỉnh]
-        L --> N
-        M --> N
+        N -->|Cả 2 phản hồi| Q[Đối chiếu & Chuẩn hóa cú pháp]
+        O --> R[Markdown Hoàn Chỉnh]
+        P --> R
+        Q --> R
     end
     
-    N --> O[Gắn YAML Frontmatter Metadata cho RAG]
-    O --> P[Lưu file .md tại output/ten_file/ten_file-date.md]
+    R --> S[Gắn YAML Frontmatter Metadata cho RAG]
+    S --> T[Lưu file .md tại output/ten_file/ten_file-date.md]
 ```
 
 ---
@@ -61,6 +68,7 @@ personal-doc-crawler/
 ├── .env                          # File cấu hình biến môi trường thực tế
 ├── .gitignore                    # Bỏ qua venv, cache, file đầu ra
 ├── config.py                     # Quản lý cấu hình, prompts, timeouts & concurrency
+├── hardware_checker.py           # Tự động quét phần cứng (CPU/RAM/GPU) & thích ứng cấu hình
 ├── requirements.txt              # Danh sách thư viện phụ thuộc
 ├── router.py                     # Bộ định tuyến thông minh & kiểm tra PDF scan
 ├── main.py                       # CLI entry-point hỗ trợ xử lý đơn lẻ & hàng loạt
@@ -68,7 +76,7 @@ personal-doc-crawler/
 │   ├── __init__.py
 │   ├── markitdown_backend.py     # Trích xuất nhanh Office (docx/xlsx/pptx)
 │   ├── docling_backend.py        # Xử lý PDF layout phức tạp offline
-│   ├── paddleocr_backend.py      # Bóc tách cấu trúc OCR, render PDF sang ảnh
+│   ├── paddleocr_backend.py      # PP-Structure bóc tách bảng & layout, render PDF
 │   ├── qwen_vl_backend.py        # Tích hợp Qwen2.5-VL (OpenAI API compatible)
 │   ├── gemini_vision_backend.py  # Tích hợp Google Gemini 3.5 Flash
 │   ├── vlm_verifier.py           # Điều phối chạy song song & Auto-Failover
@@ -93,21 +101,21 @@ python -m venv venv
 # source venv/bin/activate
 ```
 
-### Bước 2: Cài đặt các thư viện cần thiết
+### Bước 2: Cài đặt các thư viện cơ bản
 ```bash
 pip install -r requirements.txt
 ```
 
-> **Lưu ý về Stage 1 PaddleOCR Local (Tùy chọn):**
-> Mặc định hệ thống sử dụng `PyMuPDF` để tách ảnh và bóc tách PDF. Nếu muốn kích hoạt OCR engine cục bộ bằng PaddleOCR, bạn có thể cài thêm:
-> ```bash
-> # Bản CPU:
-> pip install paddlepaddle paddleocr
-> 
-> # Hoặc bản GPU (CUDA 11.8):
-> pip install paddlepaddle-gpu==2.6.0 -f https://www.paddlepaddle.org.cn/whl/windows/mkl/avx/stable.html
-> pip install paddleocr
-> ```
+### Bước 3: Cài đặt PP-Structure / PaddleOCR Cục Bộ (Tùy chọn)
+Nếu máy tính của bạn đủ điều kiện phần cứng và bạn muốn chạy bóc tách bố cục & bảng biểu offline tại Stage 1:
+```bash
+# Bản CPU:
+pip install paddlepaddle paddleocr
+
+# Hoặc bản GPU (CUDA 11.8):
+pip install paddlepaddle-gpu==2.6.0 -f https://www.paddlepaddle.org.cn/whl/windows/mkl/avx/stable.html
+pip install paddleocr
+```
 
 ---
 
@@ -166,7 +174,7 @@ OUTPUT_DIR=./output
 ## 6. Hướng Dẫn Sử Dụng Chi Tiết (A - Z)
 
 ### 6.1. Xử Lý Tự Động Theo Định Dạng (Chế Độ Mặc Định Hybrid)
-Chế độ `hybrid` sẽ tự động phân loại: file Office sẽ trích xuất thần tốc qua `markitdown`, còn file PDF scan / hình ảnh sẽ đi qua luồng 2-Stage (PaddleOCR -> Qwen & Gemini đối chiếu song song).
+Chế độ `hybrid` sẽ tự động phân loại: file Office sẽ trích xuất thần tốc qua `markitdown`, còn file PDF scan / hình ảnh sẽ đi qua luồng 2-Stage (PP-Structure/PaddleOCR -> Qwen & Gemini đối chiếu song song).
 
 ```bash
 # Chuyển đổi 1 file Office (.docx, .xlsx, .pptx):
@@ -267,7 +275,7 @@ Ví dụ nội dung file Markdown đầu ra:
 source_file: bao-cao-tai-chinh.pdf
 converted_at: 2026-08-19T22:50:02.123456
 pipeline: hybrid-2stage
-stage1_engine: paddleocr-vl
+stage1_engine: pp-structure-vl
 stage2_verifier: "qwen2.5-vl + gemini-3.5-flash (parallel cross-verified)"
 total_pages: 2
 word_count: 530
@@ -298,9 +306,10 @@ $$\sigma^2 = \sum_{i=1}^{n} p_i (x_i - \mu)^2 \quad \text{với} \quad \mu = \ma
 
 | Tình huống sự cố | Cơ chế xử lý của hệ thống |
 | :--- | :--- |
+| **Cấu hình máy tính quá yếu (RAM < 4GB)** | Hệ thống tự động bỏ qua khởi tạo PaddleOCR/PP-Structure để tránh tràn bộ nhớ (OOM) và tự chuyển sang **Online VLM OCR**. |
 | **Qwen API hết quota / timeout / chưa cấu hình key** | Hệ thống ghi log cảnh báo và **ngay lập tức sử dụng kết quả verify từ Gemini 3.5 Flash**. |
 | **Gemini báo lỗi Rate Limit 429 (Resource Exhausted)** | Hệ thống tự động kích hoạt **kết quả verify từ Qwen2.5-VL** hoặc retry với exponential backoff. |
-| **Cả 2 VLM đều không phản hồi** | Hệ thống tự động sử dụng bản nháp sạch từ **Stage 1 (PaddleOCR / Docling)** mà không làm dừng chương trình. |
+| **Cả 2 VLM đều không phản hồi** | Hệ thống tự động sử dụng bản nháp sạch từ **Stage 1 (PP-Structure / Docling)** mà không làm dừng chương trình. |
 | **PDF chứa font CID / font nhúng lỗi** | Bộ Router tự động nhận diện và chuyển hướng sang pipeline OCR hình ảnh. |
 | **Lỗi font chữ tiếng Việt trên console Windows** | Hệ thống tự động kích hoạt chế độ UTF-8 stream output để hiển thị chuẩn xác tiếng Việt. |
 
