@@ -52,8 +52,6 @@ flowchart TD
 ```text
 personal-doc-crawler/
 ├── .env.example                  # File mẫu hướng dẫn cấu hình API & tham số
-├── .env                          # File cấu hình biến môi trường thực tế
-├── .gitignore                    # Bỏ qua venv, cache, file đầu ra
 ├── config.py                     # Quản lý cấu hình, prompts, timeouts & concurrency
 ├── hardware_checker.py           # Tự động quét phần cứng (CPU/RAM/GPU) & thích ứng cấu hình
 ├── requirements.txt              # Danh sách thư viện phụ thuộc
