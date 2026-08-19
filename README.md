@@ -71,7 +71,25 @@ personal-doc-crawler/
 
 ---
 
-## 4. Hướng Dẫn Cài Đặt
+## 4. Hướng Dẫn Cài Đặt Khởi Chạy Nhanh (1-Click)
+
+Dành cho người dùng không muốn thao tác nhiều lệnh phức tạp, chúng tôi cung cấp bộ công cụ tự động 1-Click trên Windows.
+
+### Bước 1: Cài đặt tự động với `setup.bat`
+- Mở thư mục mã nguồn vừa tải về.
+- Nhấn đúp chuột vào file **`setup.bat`**.
+- File sẽ tự động kiểm tra xem máy bạn đã cài Python chưa, tự động tạo môi trường ảo, cài đặt thư viện cần thiết, tạo file `.env` và hỏi bạn có muốn cài đặt AI cục bộ (PaddleOCR) không.
+
+> [!NOTE]
+> Nếu máy báo chưa cài Python, hãy tải tại [python.org](https://www.python.org/downloads/) và nhớ tích chọn ô **"Add Python to PATH"** khi cài.
+
+### Bước 2: Sử dụng với `run.bat`
+- Sau khi cài đặt xong, mỗi lần sử dụng bạn chỉ cần click đúp vào file **`run.bat`**.
+- Giao diện Menu tương tác sẽ hiện ra cho phép bạn chọn các tính năng cực kỳ dễ dàng (không cần gõ lệnh).
+
+---
+
+## 5. Hướng Dẫn Cài Đặt Thủ Công (Dành Cho Lập Trình Viên)
 
 ### Bước 1: Khởi tạo và kích hoạt môi trường ảo Python (khuyến nghị Python 3.10 - 3.12)
 ```bash
@@ -103,7 +121,7 @@ pip install paddleocr
 
 ---
 
-## 5. Hướng Dẫn Cấu Hình Biến Môi Trường (`.env`)
+## 6. Hướng Dẫn Cấu Hình Biến Môi Trường (`.env`)
 
 Tạo file `.env` từ file mẫu `.env.example`:
 ```bash
@@ -133,9 +151,11 @@ OUTPUT_DIR=./output
 
 ---
 
-## 6. Hướng Dẫn Sử Dụng Chi Tiết (A - Z)
+## 7. Hướng Dẫn Sử Dụng Giao Diện Dòng Lệnh Nâng Cao (`main.py`)
 
-### 6.1. Xử Lý Tự Động Theo Định Dạng (Chế Độ Mặc Định Hybrid)
+Nếu bạn không muốn dùng menu tương tác (`run.bat`), bạn có thể gọi trực tiếp `main.py` qua terminal:
+
+### 7.1. Xử Lý Tự Động Theo Định Dạng (Chế Độ Mặc Định Hybrid)
 Chế độ `hybrid` sẽ tự động phân loại: file Office sẽ trích xuất thần tốc qua `markitdown`, còn file PDF scan / hình ảnh sẽ đi qua luồng 2-Stage (PP-Structure/PaddleOCR -> Qwen & Gemini đối chiếu song song).
 
 ```bash
@@ -153,7 +173,7 @@ python main.py "./test_docs/"
 
 ---
 
-### 6.3. Chế Độ Nhanh Hoàn Toàn Local / Offline (Tiết Kiệm Token & Quota API)
+### 7.2. Chế Độ Nhanh Hoàn Toàn Local / Offline (Tiết Kiệm Token & Quota API)
 
 Khi không có kết nối Internet hoặc muốn xử lý hàng ngàn trang tài liệu offline mà không tốn chi phí API:
 
@@ -169,7 +189,7 @@ Khi không có kết nối Internet hoặc muốn xử lý hàng ngàn trang tà
 
 ---
 
-### 6.4. Ép Buộc Sử Dụng Một Backend Cụ Thể (`--backend`)
+### 7.3. Ép Buộc Sử Dụng Một Backend Cụ Thể (`--backend`)
 
 * **Ép dùng MarkItDown** (cho tài liệu văn phòng chuẩn):
   ```bash
@@ -188,7 +208,7 @@ Khi không có kết nối Internet hoặc muốn xử lý hàng ngàn trang tà
 
 ---
 
-### 6.5. Các Tùy Chọn Bổ Trợ Quan Trọng
+### 7.4. Các Tùy Chọn Bổ Trợ Quan Trọng
 
 * **`--scanned`**: Đánh dấu tài liệu PDF chắc chắn là bản scan/ảnh chụp để bỏ qua bước kiểm tra text layer và đưa thẳng vào Hybrid OCR.
 * **`--rag-metadata`**: Bật chế độ tự động đính kèm YAML frontmatter chuẩn RAG ở đầu file.
@@ -196,7 +216,7 @@ Khi không có kết nối Internet hoặc muốn xử lý hàng ngàn trang tà
 
 ---
 
-## 7. Định Dạng Kết Quả Xuất Ra (Chuẩn RAG Ingestion)
+## 8. Định Dạng Kết Quả Xuất Ra (Chuẩn RAG Ingestion)
 
 Mỗi tài liệu xử lý sẽ được lưu vào: `output/{ten_file}/{ten_file}-{YYYY-MM-DD}.md`.
 
@@ -234,7 +254,7 @@ $$\sigma^2 = \sum_{i=1}^{n} p_i (x_i - \mu)^2 \quad \text{với} \quad \mu = \ma
 
 ---
 
-## 8. Cơ Chế Xử Lý Sự Cố & Tự Động Failover
+## 9. Cơ Chế Xử Lý Sự Cố & Tự Động Failover
 
 | Tình huống sự cố | Cơ chế xử lý của hệ thống |
 | :--- | :--- |
@@ -246,6 +266,6 @@ $$\sigma^2 = \sum_{i=1}^{n} p_i (x_i - \mu)^2 \quad \text{với} \quad \mu = \ma
 
 ---
 
-## 9. Giấy Phép & Đóng Góp
+## 10. Giấy Phép & Đóng Góp
 
 Dự án được phân phối dưới giấy phép mã nguồn mở **MIT License**. Mọi đóng góp (Pull Request, Báo lỗi Issue, Đề xuất tính năng) đều được chào đón!
