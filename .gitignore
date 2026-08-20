@@ -41,3 +41,8 @@ $RECYCLE.BIN/
 # Testing and temporary files
 scratch/
 .pytest_cache/
+
+# Custom excluded files
+generate_final_files.py
+cau_hoi.md
+cau_tra_loi.md
