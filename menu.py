@@ -37,6 +37,35 @@ def run_main(mode_args):
     os.system(cmd)
     input("\nNhấn Enter để tiếp tục...")
 
+def run_batch_conversion():
+    print("\n=================================================================")
+    print("       CHUYỂN ĐỔI THEO LÔ THƯ MỤC (SMART BATCH MODE)             ")
+    print("=================================================================")
+    print("Hệ thống sẽ quét toàn bộ thư mục và tự động định tuyến:")
+    print("  * File Word / Excel  -> Docling / MarkItDown (siêu tốc)")
+    print("  * File PPTX / PDF    -> Tự phân tích nội dung (Text thuần hoặc OCR)")
+    print("  * File Hình ảnh      -> PaddleOCR + Gemini VLM Verification")
+    print("  * Quản lý API Key    -> Tự động luân phiên khi gặp Rate Limit")
+    print("-----------------------------------------------------------------")
+    
+    path = get_input_path(prompt="Nhập hoặc kéo thả THƯ MỤC cần chuyển đổi vào đây: ")
+    if not os.path.exists(path):
+        print(f"\n[!] Lỗi: Không tìm thấy đường dẫn '{path}'")
+        input("Nhấn Enter để tiếp tục...")
+        return
+        
+    p = Path(path)
+    if not p.is_dir():
+        print(f"\n[!] Chú ý: '{path}' là file đơn lẻ.")
+        c = input("Bạn có muốn chuyển đổi file này với chế độ Auto không? (y/n): ").strip().lower()
+        if c != 'y':
+            return
+
+    if check_gemini_key():
+        cmd = f'python main.py "{path}" --mode auto'
+        os.system(cmd)
+        input("\nNhấn Enter để tiếp tục...")
+
 def config_api_key():
     env_path = Path(".env")
     if not env_path.exists():
@@ -108,10 +137,11 @@ def main_menu():
         print(" [1] Quét OCR chất lượng cao (Hybrid: PaddleOCR + Gemini 3.5 Flash)")
         print(" [2] Chuyển đổi siêu tốc offline (Fast Mode - Không tốn API)")
         print(" [3] OCR trực tiếp bằng Gemini Vision (VLM Mode - Dành cho máy yếu)")
-        print(" [4] Cấu hình GEMINI API KEY (Quản lý Key sinh text)")
-        print(" [5] Mở thư mục kết quả (Output)")
-        print(" [6] Kiểm tra cấu hình phần cứng (Hardware Profiling)")
-        print(" [7] Thông tin dự án (License & GitHub)")
+        print(" [4] Chuyển đổi theo lô thư mục (Batch Mode - Định tuyến tự động)")
+        print(" [5] Cấu hình GEMINI API KEY (Quản lý Key sinh text)")
+        print(" [6] Mở thư mục kết quả (Output)")
+        print(" [7] Kiểm tra cấu hình phần cứng (Hardware Profiling)")
+        print(" [8] Thông tin dự án (License & GitHub)")
         print(" [0] Kết thúc phiên (Thoát)\n")
         
         choice = input("Lựa chọn của bạn: ").strip()
@@ -128,12 +158,14 @@ def main_menu():
             if check_gemini_key():
                 run_main("--mode vlm")
         elif choice == '4':
-            config_api_key()
+            run_batch_conversion()
         elif choice == '5':
-            open_output_dir()
+            config_api_key()
         elif choice == '6':
-            check_hardware()
+            open_output_dir()
         elif choice == '7':
+            check_hardware()
+        elif choice == '8':
             show_info()
         elif choice == '0':
             print("\nĐã đóng chương trình. Hẹn gặp lại!")
