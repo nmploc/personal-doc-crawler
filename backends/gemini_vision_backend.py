@@ -26,11 +26,11 @@ def _get_client_and_idx():
     with _client_lock:
         idx = _current_key_idx
         key = GEMINI_API_KEYS[idx]
+        if idx not in _clients:
+            _clients[idx] = genai.Client(api_key=key)
+        client = _clients[idx]
         
-    if idx not in _clients:
-        _clients[idx] = genai.Client(api_key=key)
-        
-    return _clients[idx], idx
+    return client, idx
 
 def _rotate_key(failed_idx):
     global _current_key_idx

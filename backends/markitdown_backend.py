@@ -3,7 +3,7 @@ from pathlib import Path
 from config import MARKITDOWN_CMD
 
 
-def parse_with_markitdown(input_path: Path) -> str:
+def parse_with_markitdown(input_path: Path, obsidian_mode: str = 'table') -> str:
     """Chạy MarkItDown (qua Python API hoặc CLI), trả về nội dung markdown dạng string."""
     text = ""
     # Cách 1: Thử dùng Python API trực tiếp (nhanh hơn, không bị lỗi subprocess/encoding)
@@ -36,5 +36,18 @@ def parse_with_markitdown(input_path: Path) -> str:
             "Phát hiện PDF dùng font CID không giải mã được — "
             "hãy dùng backend docling hoặc gemini thay vì markitdown."
         )
+        
+    # Hậu xử lý (Post-Processor): Làm sạch bảng Markdown cho Obsidian nếu là file Office/CSV
+    if obsidian_mode != 'none' and input_path.suffix.lower() in {'.xlsx', '.xls', '.csv', '.docx'}:
+        try:
+            import sys
+            import os
+            tools_dir = str(Path(__file__).parent.parent / 'tools')
+            if tools_dir not in sys.path:
+                sys.path.append(tools_dir)
+            from obsidian_table_cleaner import clean_markdown_table_content
+            text = clean_markdown_table_content(text, output_mode=obsidian_mode)
+        except Exception as e:
+            print(f"[Cảnh báo] Lỗi khi làm sạch Markdown cho Obsidian: {e}")
+            
     return text
-

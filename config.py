@@ -1,14 +1,17 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+_ENV_FILE = Path(__file__).parent / ".env"
 
 # --- API Keys & Models ---
 # Tự động đọc tất cả các GEMINI_API_KEY từ file .env để hỗ trợ luân phiên (fallback)
 def _load_gemini_keys():
     keys = []
-    if os.path.exists(".env"):
-        with open(".env", "r", encoding="utf-8") as f:
+    if _ENV_FILE.exists():
+        with open(_ENV_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line.startswith("GEMINI_API_KEY="):

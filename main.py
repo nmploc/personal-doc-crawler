@@ -27,6 +27,12 @@ from backends import (
     parse_with_paddleocr,
     run_hybrid_pipeline,
 )
+import threading
+
+_backend_semaphores = {
+    b: threading.Semaphore(MAX_CONCURRENCY.get(b.value, 4))
+    for b in Backend
+}
 
 
 def _exec_backend(
@@ -34,6 +40,7 @@ def _exec_backend(
     path: Path,
     enable_rag: bool,
     skip_stage2: bool,
+    obsidian_mode: str = 'table',
 ) -> str:
     """Gọi thực thi backend tương ứng với các tham số điều khiển."""
     if b == Backend.HYBRID:
@@ -51,7 +58,7 @@ def _exec_backend(
     elif b == Backend.DOCLING:
         return parse_with_docling(path)
     elif b == Backend.MARKITDOWN:
-        return parse_with_markitdown(path)
+        return parse_with_markitdown(path, obsidian_mode=obsidian_mode)
     else:
         raise ValueError(f"Backend chưa được cấu hình hàm xử lý: {b}")
 
@@ -88,10 +95,9 @@ def build_output_path(input_path: Path, base_dir: Optional[Path] = None) -> Path
         return out_file
     else:
         stem = input_path.stem
-        today = date.today().isoformat()
         folder = out_dir / stem
         folder.mkdir(parents=True, exist_ok=True)
-        return folder / f"{stem}-{today}.md"
+        return folder / f"{stem}.md"
 
 
 def process_file(
@@ -103,6 +109,7 @@ def process_file(
     skip_stage2: bool,
     overwrite: bool = False,
     base_dir: Optional[Path] = None,
+    obsidian_mode: str = 'table',
 ) -> tuple[Path, str]:
     out_path = build_output_path(input_path, base_dir)
     if not overwrite and out_path.exists() and out_path.stat().st_size > 0:
@@ -119,12 +126,19 @@ def process_file(
 
     for b in chain:
         try:
-            content = _exec_backend(
-                b,
-                input_path,
-                enable_rag=enable_rag,
-                skip_stage2=skip_stage2,
-            )
+            with _backend_semaphores[b]:
+                content = _exec_backend(
+                    b,
+                    input_path,
+                    enable_rag=enable_rag,
+                    skip_stage2=skip_stage2,
+                    obsidian_mode=obsidian_mode,
+                )
+            if len(content.strip()) < 20:
+                raise RuntimeError(
+                    f"Output quá ngắn ({len(content.strip())} ký tự) — "
+                    f"backend {b.value} có thể không hỗ trợ định dạng này."
+                )
             out_path.write_text(content, encoding="utf-8")
             return out_path, f"OK ({b.value})"
         except Exception as e:
@@ -143,6 +157,7 @@ def run_batch(
     skip_stage2: bool,
     overwrite: bool = False,
     base_dir: Optional[Path] = None,
+    obsidian_mode: str = 'table',
 ):
     max_workers = max(MAX_CONCURRENCY.values())
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -157,6 +172,7 @@ def run_batch(
                 skip_stage2,
                 overwrite,
                 base_dir,
+                obsidian_mode,
             ): f
             for f in files
         }
@@ -200,9 +216,9 @@ def main():
     )
     parser.add_argument(
         "--rag-metadata",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=ENABLE_RAG_METADATA,
-        help="Tự động sinh YAML Frontmatter chứa thông tin cấu trúc cho AI / RAG",
+        help="Tự động sinh YAML Frontmatter chứa thông tin cấu trúc cho AI / RAG (hỗ trợ --no-rag-metadata)",
     )
     parser.add_argument(
         "--no-refine",
@@ -213,6 +229,12 @@ def main():
         "--overwrite",
         action="store_true",
         help="Ghi đè file markdown nếu đã tồn tại",
+    )
+    parser.add_argument(
+        "--obsidian-mode",
+        choices=["table", "callout", "none"],
+        default="table",
+        help="Định dạng xuất bảng cho Obsidian (áp dụng MarkItDown với Excel/CSV). 'table' (Mặc định): Bảng chuẩn. 'callout': Thẻ ghi chú Q&A. 'none': Giữ nguyên gốc.",
     )
     args = parser.parse_args()
 
@@ -266,6 +288,7 @@ def main():
         skip_stage2=args.no_refine,
         overwrite=args.overwrite,
         base_dir=base_dir,
+        obsidian_mode=args.obsidian_mode,
     )
     print(f"\nHoàn tất trong {time.time() - start:.2f}s")
 

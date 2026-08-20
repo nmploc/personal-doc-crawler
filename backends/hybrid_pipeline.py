@@ -1,6 +1,6 @@
 import datetime
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from config import ENABLE_RAG_METADATA
 from backends.paddleocr_backend import parse_with_paddleocr, render_pdf_to_images, load_image_bytes
 from backends.vlm_verifier import verify_and_refine
@@ -34,9 +34,12 @@ def _generate_frontmatter(
 
 def run_hybrid_pipeline(
     input_path: Path,
-    enable_rag: bool = ENABLE_RAG_METADATA,
+    enable_rag: Optional[bool] = None,
     skip_stage2: bool = False,
 ) -> str:
+    if enable_rag is None:
+        from config import ENABLE_RAG_METADATA
+        enable_rag = ENABLE_RAG_METADATA
     """
     Quy trình Hybrid 2-Stage hoàn chỉnh:
     - Stage 1: Bóc tách OCR & bố cục bằng PaddleOCR-VL (sinh draft markdown + ảnh các trang).

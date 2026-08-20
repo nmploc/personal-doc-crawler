@@ -165,7 +165,7 @@ OUTPUT_DIR=./output
 Nếu bạn không muốn dùng menu tương tác (`run.bat`), bạn có thể gọi trực tiếp `main.py` qua terminal:
 
 ### 7.1. Xử Lý Tự Động Theo Định Dạng (Chế Độ Mặc Định Hybrid)
-Chế độ `hybrid` sẽ tự động phân loại: file Office sẽ trích xuất thần tốc qua `markitdown`, còn file PDF scan / hình ảnh sẽ đi qua luồng 2-Stage (PP-Structure/PaddleOCR -> Qwen & Gemini đối chiếu song song).
+Chế độ `hybrid` sẽ tự động phân loại: file Office sẽ trích xuất thần tốc qua `markitdown`, còn file PDF scan / hình ảnh sẽ đi qua luồng 2-Stage (PP-Structure/PaddleOCR -> Gemini đối chiếu ).
 
 ```bash
 # Chuyển đổi 1 file Office (.docx, .xlsx, .pptx):
@@ -275,6 +275,35 @@ $$\sigma^2 = \sum_{i=1}^{n} p_i (x_i - \mu)^2 \quad \text{với} \quad \mu = \ma
 
 ---
 
-## 10. Giấy Phép & Đóng Góp
+## 10. Tiện Ích Obsidian Table Cleaner
+
+Công cụ hỗ trợ xử lý đặc biệt cho người dùng **Obsidian** khi crawl dữ liệu từ các file Excel (`.xlsx`, `.csv`). 
+Khi bảng chứa các ký tự đặc biệt như `|` trong biểu thức toán học hoặc code C, Obsidian có thể bị vỡ layout bảng.
+
+*   **Chế độ tích hợp (Auto):** Hệ thống tự động xử lý và làm sạch bảng. Bạn có thể sử dụng cờ `--obsidian-mode` để xuất ra định dạng mong muốn:
+    ```bash
+    # Xuất ra bảng Markdown chuẩn đã làm sạch
+    python main.py "./docs/data.xlsx" --obsidian-mode table
+
+    # Xuất ra dạng thẻ ghi chú (Q&A Flashcard) kết hợp Callout của Obsidian (Khuyên dùng)
+    python main.py "./docs/data.xlsx" --obsidian-mode callout
+    ```
+*   **Chế độ độc lập (Standalone):** Làm sạch một file Markdown đã có sẵn:
+    ```bash
+    python tools/obsidian_table_cleaner.py "output\review\review.md" --mode callout
+    ```
+
+---
+
+## 11. Cập Nhật Mới & Bug Fixes Gần Đây
+
+*   **Kiểm thử (Tests):** Bổ sung bộ unit test toàn diện `tests/test_smoke.py` bao phủ router, cli, config và mock cho backend.
+*   **Concurrency Fix:** Đã khắc phục lỗi chặn luồng (bottleneck) bằng cách dùng Semaphore phân vùng tài nguyên độc lập cho từng Backend.
+*   **Gemini Cache:** Sửa lỗi Race Condition khi tạo client của Google Gemini Vision API trong môi trường đa luồng.
+*   **CLI & Pathing:** Hỗ trợ chuẩn `BooleanOptionalAction` cho cờ `--rag-metadata`. Sửa lỗi sinh file name có chứa `{date}` gây lỗi hệ thống caching deduplication. Cải thiện fallback an toàn với text content ngắn (dưới 20 ký tự).
+
+---
+
+## 12. Giấy Phép & Đóng Góp
 
 Dự án được phân phối dưới giấy phép mã nguồn mở **MIT License**. Mọi đóng góp (Pull Request, Báo lỗi Issue, Đề xuất tính năng) đều được chào đón!
