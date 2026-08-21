@@ -40,7 +40,6 @@ def _exec_backend(
     path: Path,
     enable_rag: bool,
     skip_stage2: bool,
-    obsidian_mode: str = 'table',
 ) -> str:
     """Gọi thực thi backend tương ứng với các tham số điều khiển."""
     if b == Backend.HYBRID:
@@ -58,7 +57,7 @@ def _exec_backend(
     elif b == Backend.DOCLING:
         return parse_with_docling(path)
     elif b == Backend.MARKITDOWN:
-        return parse_with_markitdown(path, obsidian_mode=obsidian_mode)
+        return parse_with_markitdown(path)
     else:
         raise ValueError(f"Backend chưa được cấu hình hàm xử lý: {b}")
 
@@ -110,6 +109,7 @@ def process_file(
     overwrite: bool = False,
     base_dir: Optional[Path] = None,
     obsidian_mode: str = 'table',
+    verify_formulas: bool = False,
 ) -> tuple[Path, str]:
     out_path = build_output_path(input_path, base_dir)
     if not overwrite and out_path.exists() and out_path.stat().st_size > 0:
@@ -132,8 +132,23 @@ def process_file(
                     input_path,
                     enable_rag=enable_rag,
                     skip_stage2=skip_stage2,
-                    obsidian_mode=obsidian_mode,
                 )
+            
+            # --- POST-PROCESSING ---
+            try:
+                import sys
+                tools_dir = str(Path(__file__).parent / 'tools')
+                if tools_dir not in sys.path:
+                    sys.path.append(tools_dir)
+                from table_structure_fixer import fix_table_structure
+                content, suspicious = fix_table_structure(content, output_mode=obsidian_mode)
+                
+                if verify_formulas and suspicious and input_path.suffix.lower() in {'.docx', '.xlsx', '.xls'}:
+                    # Phase 4 integration point
+                    pass
+            except Exception as e:
+                print(f"[CẢNH BÁO] Post-processing thất bại: {e}")
+
             if len(content.strip()) < 20:
                 raise RuntimeError(
                     f"Output quá ngắn ({len(content.strip())} ký tự) — "
@@ -158,6 +173,7 @@ def run_batch(
     overwrite: bool = False,
     base_dir: Optional[Path] = None,
     obsidian_mode: str = 'table',
+    verify_formulas: bool = False,
 ):
     max_workers = max(MAX_CONCURRENCY.values())
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -173,6 +189,7 @@ def run_batch(
                 overwrite,
                 base_dir,
                 obsidian_mode,
+                verify_formulas,
             ): f
             for f in files
         }
@@ -236,6 +253,11 @@ def main():
         default="table",
         help="Định dạng xuất bảng cho Obsidian (áp dụng MarkItDown với Excel/CSV). 'table' (Mặc định): Bảng chuẩn. 'callout': Thẻ ghi chú Q&A. 'none': Giữ nguyên gốc.",
     )
+    parser.add_argument(
+        "--verify-formulas",
+        action="store_true",
+        help="Bật Lớp 1 (AI Verifier) cho các công thức khả nghi trong file Word/Excel (tốn API)",
+    )
     args = parser.parse_args()
 
     target = Path(args.path)
@@ -289,6 +311,7 @@ def main():
         overwrite=args.overwrite,
         base_dir=base_dir,
         obsidian_mode=args.obsidian_mode,
+        verify_formulas=args.verify_formulas,
     )
     print(f"\nHoàn tất trong {time.time() - start:.2f}s")
 

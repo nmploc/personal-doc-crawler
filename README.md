@@ -1,18 +1,22 @@
-# Personal Doc Crawler – Hệ Thống Hybrid OCR & VLM Verification
+# Personal Doc Crawler – Hệ Thống Hybrid OCR, Table Structure Fixer & VLM Verification
 
-> **Giải pháp trích xuất, phân tích bố cục và chuyển đổi tài liệu đa định dạng (PDF scan, Office, Hình ảnh phức tạp) sang Markdown cấu trúc chuẩn cho AI & RAG.**
+> **Giải pháp trích xuất, phân tích bố cục, nối liền bảng ngắt trang và chuyển đổi tài liệu đa định dạng (PDF scan, Office, Hình ảnh phức tạp) sang Markdown cấu trúc chuẩn cho Obsidian, AI & RAG.**
 
 ---
 
 ## 1. Giới Thiệu Tổng Quan
 
-**Personal Doc Crawler** kết hợp sức mạnh chuyên biệt của các công cụ Document OCR hàng đầu hiện nay theo **Kiến trúc Hybrid 2-Stage**:
+**Personal Doc Crawler** kết hợp sức mạnh chuyên biệt của các công cụ Document Parsing & OCR hàng đầu theo **Kiến trúc Hybrid 2-Stage & Pipeline Hậu Xử Lý Độc Lập**:
 
-* **Tự Động Quét Phần Cứng (Hardware Auto-Profiling):** Hệ thống tự động kiểm tra tài nguyên máy tính (CPU cores, dung lượng RAM khả dụng, GPU NVIDIA/CUDA). Nếu cấu hình máy tính quá yếu (RAM < 4GB hoặc CPU < 2 cores), hệ thống sẽ **đưa ra cảnh báo và tự động bỏ qua thiết lập OCR cục bộ, chuyển 100% sang Online VLM OCR**.
-* **Stage 1 (PP-Structure & Specialized Document Parsing):** Sử dụng **PP-Structure / PaddleOCR** (hoặc MarkItDown / Docling) bóc tách bố cục đa cột, bảng biểu (chuyển trực tiếp sang Markdown Table), công thức toán học và tách từng trang tài liệu thành hình ảnh chất lượng cao.
-* **Stage 2 (VLM Verification):** Sử dụng **Gemini 3.5 Flash** (suy luận thị giác tốc độ cao, sửa lỗi chính tả và chuẩn hóa bảng/LaTeX).
-* **Cơ Chế Tự Động Failover:** Nếu quá trình xử lý gặp sự cố, hệ thống sẽ cố gắng tự động dùng các engine OCR khác làm dự phòng để hoàn tất quá trình mà không làm gián đoạn toàn bộ batch tài liệu.
-* **Chuẩn Hóa RAG Ready:** Tự động sinh **YAML Frontmatter** chứa đầy đủ metadata (nguồn file, số trang, token estimate, model pipeline) và làm sạch bảng Markdown, công thức toán LaTeX ($...$, $$...$$).
+* **Tự Động Quét Phần Cứng (Hardware Auto-Profiling):** Tự động kiểm tra CPU, RAM khả dụng, GPU NVIDIA/CUDA. Nếu cấu hình yếu (RAM < 4GB hoặc CPU < 2 cores), hệ thống cảnh báo và tự động chuyển 100% sang **Online VLM OCR** (Gemini 3.5 Flash) để tránh tràn bộ nhớ.
+* **Stage 1 (Specialized Document Parsing & OCR):** Tự động phân loại định tuyến qua **MarkItDown** (Office tốc độ cao), **Docling** (PDF layout phức tạp offline), hoặc **PP-Structure / PaddleOCR** (bóc tách bảng biểu, đa cột, công thức).
+* **Stage 2 (VLM Verification):** Tích hợp **Gemini 3.5 Flash** đối chiếu ảnh gốc và bản nháp Markdown từ Stage 1 để sửa lỗi chính tả, phục hồi bảng vỡ và chuẩn hóa LaTeX.
+* **Post-Processing Pipeline Chung (Lớp 0 Table Structure Fixer):** Toàn bộ dữ liệu xuất từ *mọi backend* đều đi qua bộ lọc cấu trúc:
+  * **Tự động nối bảng bị ngắt trang**: Tự động phát hiện và hợp nhất các phần bảng bị phân tách bởi dấu ngắt trang (`<!-- Page N -->`) hoặc dòng trống khi cùng Header signature.
+  * **Chuẩn hóa số cột**: Cân bằng số lượng cell trên mỗi hàng, gộp cột dư, tự động bù cột thiếu, loại bỏ dòng toàn `NaN`.
+  * **Chuẩn hóa ký tự & Toán học**: Bảo toàn phép toán bitwise (`|=`, `&=`, `^=`), tự động chuyển đổi biểu thức toán sang LaTeX (`\times`, `\le`, `\ge`, `\pm`, phân số, lũy thừa).
+  * **Hỗ trợ xuất linh hoạt**: Xuất bảng chuẩn (`table`), thẻ ghi chú Q&A Callout cho Obsidian (`callout`), hoặc giữ nguyên gốc (`none`).
+* **Sẵn sàng cho RAG & AI Ingestion:** Tự động sinh **YAML Frontmatter** chứa đầy đủ metadata (file nguồn, số trang, dung lượng từ, pipeline sử dụng).
 
 ---
 
@@ -24,25 +28,30 @@ flowchart TD
     B -->|RAM < 4GB hoặc CPU yếu| C[Cảnh báo & Chuyển 100% sang Online VLM]
     B -->|Cấu hình đủ mạnh| D[Tự động bật GPU/CPU MKLDNN cho PP-Structure]
     
-    D --> E[Tài liệu: PDF / DOCX / XLSX / Ảnh Scan]
+    D --> E[Tài liệu: PDF / DOCX / XLSX / PPTX / Ảnh Scan]
     C --> E
     
     E --> F{Router Phân Loại}
-    F -->|Office: docx/xlsx/pptx| G[Stage 1: MarkItDown]
-    F -->|PDF phức tạp / Bảng biểu| H[Stage 1: Docling]
-    F -->|Ảnh Scan / Đa cột / Công thức| I[Stage 1: PP-Structure / PaddleOCR]
+    F -->|Office: docx/xlsx/pptx| G[Backend: MarkItDown]
+    F -->|PDF phức tạp / Bảng biểu| H[Backend: Docling]
+    F -->|Ảnh Scan / Đa cột / Công thức| I[Backend: PP-Structure / PaddleOCR]
+    F -->|Chế độ VLM trực tiếp| J[Backend: Gemini Vision]
     
-    G --> J[Draft Markdown + Ảnh các trang]
-    H --> J
-    I --> J
+    G --> K[Markdown Thô]
+    H --> K
+    I --> K
+    J --> K
     
-    J --> K[Stage 2: Gemini 3.5 Flash Verification]
+    K --> L["Post-Processing Pipeline (Dùng chung cho mọi Backend)"]
+    L --> M["Lớp 0: Table Structure Fixer (Miễn phí 100%)<br>- Ghép bảng ngắt trang<br>- Chuẩn hóa số cột & NaN<br>- Format LaTeX & Bitwise<br>- Quét vùng khả nghi"]
     
-    K -->|Thành công| R[Markdown Hoàn Chỉnh]
-    K -->|Lỗi| R
+    M --> N{Bật --verify-formulas & Có vùng khả nghi?}
+    N -->|Có| O["Lớp 1: Formula AI Verifier (Gemini Refine)"]
+    N -->|Không| P[Markdown Chuẩn Hóa]
+    O --> P
     
-    R --> S[Gắn YAML Frontmatter Metadata cho RAG]
-    S --> T[Lưu file .md tại output/ten_file/ten_file-date.md]
+    P --> Q[Gắn YAML Frontmatter Metadata cho RAG]
+    Q --> R[Lưu file kết quả tại output/]
 ```
 
 ---
@@ -51,48 +60,49 @@ flowchart TD
 
 ```text
 personal-doc-crawler/
-├── .env.example                  # File mẫu hướng dẫn cấu hình API & tham số
-├── config.py                     # Quản lý cấu hình, prompts, timeouts & concurrency
-├── hardware_checker.py           # Tự động quét phần cứng (CPU/RAM/GPU) & thích ứng cấu hình
-├── requirements.txt              # Danh sách thư viện phụ thuộc
-├── router.py                     # Bộ định tuyến thông minh & kiểm tra PDF scan
-├── main.py                       # CLI entry-point hỗ trợ xử lý đơn lẻ & hàng loạt
+├── .env.example                      # File mẫu hướng dẫn cấu hình API & tham số
+├── config.py                         # Cấu hình hệ thống, prompts, timeouts & concurrency
+├── hardware_checker.py               # Tự động quét phần cứng (CPU/RAM/GPU) & thích ứng cấu hình
+├── requirements.txt                  # Danh sách thư viện phụ thuộc
+├── router.py                         # Bộ định tuyến thông minh & phân tích độ phức tạp PDF
+├── main.py                           # Entry-point CLI với Post-Processing Pipeline tập trung
 ├── backends/
 │   ├── __init__.py
-│   ├── markitdown_backend.py     # Trích xuất nhanh Office (docx/xlsx/pptx)
-│   ├── docling_backend.py        # Xử lý PDF layout phức tạp offline
-│   ├── paddleocr_backend.py      # PP-Structure bóc tách bảng & layout, render PDF
-│   ├── gemini_vision_backend.py  # Tích hợp Google Gemini 3.5 Flash
-│   ├── vlm_verifier.py           # Quản lý verification bằng Gemini
-│   └── hybrid_pipeline.py        # Quản lý chuỗi 2-Stage & sinh Frontmatter RAG
-├── test_docs/                    # Thư mục chứa tài liệu mẫu thử nghiệm
-└── output/                       # Nơi lưu trữ file Markdown kết quả
+│   ├── markitdown_backend.py         # Trích xuất Office (docx/xlsx/pptx/csv)
+│   ├── docling_backend.py            # Trích xuất layout tài liệu phức tạp offline
+│   ├── paddleocr_backend.py          # PP-Structure bóc tách layout, bảng và render PDF
+│   ├── gemini_vision_backend.py      # Tích hợp Google Gemini (Vision & Refiner)
+│   ├── vlm_verifier.py               # Module điều phối kiểm định VLM
+│   └── hybrid_pipeline.py            # Pipeline 2-Stage & sinh Frontmatter RAG
+├── tools/
+│   ├── table_structure_fixer.py      # [MỚI] Lớp 0: Sửa cấu trúc bảng, nối bảng ngắt trang, chuẩn hóa toán
+│   └── obsidian_table_cleaner.py     # Tiện ích standalone làm sạch bảng Markdown cho Obsidian
+├── tests/
+│   ├── test_smoke.py                 # Smoke tests hệ thống & router
+│   ├── test_obsidian_sanitizer.py    # Test suite làm sạch bảng & regex toán học
+│   └── test_table_structure_fixer.py # [MỚI] Test suite kiểm thử Lớp 0 và merge bảng ngắt trang
+├── test_docs/                        # Thư mục chứa tài liệu mẫu thử nghiệm
+└── output/                           # Nơi lưu trữ file Markdown kết quả
 ```
 
 ---
 
-## 4. Hướng Dẫn Cài Đặt Khởi Chạy Nhanh (1-Click)
-
-Dành cho người dùng không muốn thao tác nhiều lệnh phức tạp, chúng tôi cung cấp bộ công cụ tự động 1-Click trên Windows.
+## 4. Hướng Dẫn Cài Đặt Khởi Chạy Nhanh (1-Click trên Windows)
 
 ### Bước 1: Cài đặt tự động với `setup.bat`
 - Mở thư mục mã nguồn vừa tải về.
 - Nhấn đúp chuột vào file **`setup.bat`**.
-- File sẽ tự động kiểm tra xem máy bạn đã cài Python chưa, tự động tạo môi trường ảo, cài đặt thư viện cần thiết, tạo file `.env` và hỏi bạn có muốn cài đặt AI cục bộ (PaddleOCR) không.
-
-> [!NOTE]
-> Nếu máy báo chưa cài Python, hãy tải tại [python.org](https://www.python.org/downloads/) và nhớ tích chọn ô **"Add Python to PATH"** khi cài.
+- File sẽ tự động kiểm tra Python, tạo môi trường ảo `venv`, cài đặt thư viện cần thiết và tạo file `.env`.
 
 ### Bước 2: Sử dụng với `run.bat`
-- Sau khi cài đặt xong, mỗi lần sử dụng bạn chỉ cần click đúp vào file **`run.bat`**.
-- Giao diện Menu tương tác sẽ hiện ra cho phép bạn chọn các tính năng cực kỳ dễ dàng (không cần gõ lệnh).
+- Nhấn đúp chuột vào **`run.bat`** để mở menu tương tác chuyển đổi tài liệu dễ dàng không cần nhớ câu lệnh.
 
 ---
 
-## 5. Hướng Dẫn Cài Đặt Thủ Công (Dành Cho Lập Trình Viên)
+## 5. Hướng Dẫn Cài Đặt Thủ Công
 
-### Bước 1: Khởi tạo và kích hoạt môi trường ảo Python (khuyến nghị Python 3.10 - 3.12)
-```bash
+### Bước 1: Khởi tạo và kích hoạt môi trường ảo Python (Python 3.10 - 3.12)
+```powershell
 # Tạo môi trường ảo
 python -m venv venv
 
@@ -103,13 +113,12 @@ python -m venv venv
 # source venv/bin/activate
 ```
 
-### Bước 2: Cài đặt các thư viện cơ bản
+### Bước 2: Cài đặt các thư viện phụ thuộc
 ```bash
 pip install -r requirements.txt
 ```
 
-### Bước 3: Cài đặt PP-Structure / PaddleOCR Cục Bộ (Tùy chọn)
-Nếu máy tính của bạn đủ điều kiện phần cứng và bạn muốn chạy bóc tách bố cục & bảng biểu offline tại Stage 1:
+### Bước 3: Cài đặt PP-Structure / PaddleOCR (Tùy chọn cho Local OCR)
 ```bash
 # Bản CPU:
 pip install paddlepaddle paddleocr
@@ -121,189 +130,114 @@ pip install paddleocr
 
 ---
 
-## 6. Hướng Dẫn Cấu Hình Biến Môi Trường (`.env`)
+## 6. Cấu Hình Biến Môi Trường (`.env`)
 
 Tạo file `.env` từ file mẫu `.env.example`:
 ```bash
 cp .env.example .env
 ```
 
-Nội dung cấu hình chi tiết trong `.env`:
+Các thông số cấu hình chính:
 
 ```env
-# ==============================================================================
-# 1. CẤU HÌNH GOOGLE GEMINI (Lấy key tại: https://aistudio.google.com/apikey)
-# ==============================================================================
-# Người dùng phổ thông (mặc định 1 key)
+# Google Gemini API Keys (Hỗ trợ khai báo nhiều key để tự động luân phiên khi hết quota)
 GEMINI_API_KEY=AIzaSy...
-
-# Dành cho nhà phát triển (Sử dụng luân phiên nhiều Free-Tier keys):
-# Bạn có thể khai báo nhiều dòng GEMINI_API_KEY. Hệ thống sẽ tự động luân phiên
-# (fallback) sang key tiếp theo nếu key hiện tại hết quota (hoặc báo lỗi 429).
-# GEMINI_API_KEY=Key_Thứ_1...
-# GEMINI_API_KEY=Key_Thứ_2...
-# GEMINI_API_KEY=Key_Thứ_3...
-
 GEMINI_MODEL=gemini-3.5-flash
 
-# ==============================================================================
-# 2. CẤU HÌNH TIMEOUT
-# ==============================================================================
+# Cấu hình kiểm định & RAG
 VLM_TIMEOUT_SECONDS=45
 ENABLE_RAG_METADATA=true
+ENABLE_FORMULA_VERIFY=false
 
-# ==============================================================================
-# 4. THƯ MỤC LƯU TRỮ ĐẦU RA
-# ==============================================================================
+# Thư mục lưu trữ kết quả
 OUTPUT_DIR=./output
 ```
 
 ---
 
-## 7. Hướng Dẫn Sử Dụng Giao Diện Dòng Lệnh Nâng Cao (`main.py`)
+## 7. Hướng Dẫn Sử Dụng Dòng Lệnh (`main.py`)
 
-Nếu bạn không muốn dùng menu tương tác (`run.bat`), bạn có thể gọi trực tiếp `main.py` qua terminal:
-
-### 7.1. Xử Lý Tự Động Theo Định Dạng (Chế Độ Mặc Định Hybrid)
-Chế độ `hybrid` sẽ tự động phân loại: file Office sẽ trích xuất thần tốc qua `markitdown`, còn file PDF scan / hình ảnh sẽ đi qua luồng 2-Stage (PP-Structure/PaddleOCR -> Gemini đối chiếu ).
-
+### 7.1. Chế Độ Mặc Định (Hybrid Pipeline)
+Hệ thống tự động nhận diện định dạng file để đưa vào backend tối ưu nhất:
 ```bash
-# Chuyển đổi 1 file Office (.docx, .xlsx, .pptx):
-python main.py "./test_docs/sample_report.docx"
+# Xử lý 1 file Office (.xlsx, .docx, .pptx):
+python main.py "./test_docs/bang_luong.xlsx"
 
-# Chuyển đổi 1 file PDF hoặc ảnh chụp hợp đồng/bảng điểm:
-python main.py "./test_docs/hop-dong-scan.pdf"
+# Xử lý 1 file PDF scan hoặc ảnh:
+python main.py "./test_docs/hop_dong_scan.pdf"
 
-# Chuyển đổi toàn bộ thư mục tài liệu:
+# Xử lý hàng loạt toàn bộ thư mục:
 python main.py "./test_docs/"
 ```
 
+### 7.2. Tùy Chọn Xuất Bảng Chuẩn Hóa Cho Obsidian (`--obsidian-mode`)
+Lớp 0 Post-Processor tự động định dạng bảng cho mọi backend:
+```bash
+# Xuất dạng bảng Markdown chuẩn (Mặc định)
+python main.py "./test_docs/data.xlsx" --obsidian-mode table
 
+# Xuất dạng thẻ Callout Q&A tương tác cho Obsidian Flashcard
+python main.py "./test_docs/data.xlsx" --obsidian-mode callout
 
----
+# Giữ nguyên bản gốc nhưng vẫn sửa lỗi ngắt trang và lệch cột
+python main.py "./test_docs/data.xlsx" --obsidian-mode none
+```
 
-### 7.2. Chế Độ Nhanh Hoàn Toàn Local / Offline (Tiết Kiệm Token & Quota API)
+### 7.3. Chế Độ Nhanh Hoàn Toàn Local / Offline (`--mode fast` hoặc `--no-refine`)
+```bash
+# Bỏ qua Stage 2 Gemini Refine để tiết kiệm API:
+python main.py "./test_docs/" --no-refine
 
-Khi không có kết nối Internet hoặc muốn xử lý hàng ngàn trang tài liệu offline mà không tốn chi phí API:
+# Ưu tiên 100% các engine local:
+python main.py "./test_docs/" --mode fast
+```
 
-* **Bỏ qua Stage 2 VLM Verification (Chỉ chạy Stage 1 OCR):**
-  ```bash
-  python main.py "./docs/" --no-refine
-  ```
+### 7.4. Chỉ Định Backend Cụ Thể (`--backend`)
+```bash
+# Ép dùng MarkItDown:
+python main.py "./test_docs/tai_lieu.docx" --backend markitdown
 
-* **Chạy với profile `--mode fast` (Ưu tiên hoàn toàn các engine local):**
-  ```bash
-  python main.py "./docs/" --mode fast
-  ```
+# Ép dùng Docling:
+python main.py "./test_docs/tai_chinh.pdf" --backend docling
 
----
+# Ép dùng Gemini Vision trực tiếp:
+python main.py "./test_docs/anh_chup.jpg" --backend gemini
+```
 
-### 7.3. Ép Buộc Sử Dụng Một Backend Cụ Thể (`--backend`)
-
-* **Ép dùng MarkItDown** (cho tài liệu văn phòng chuẩn):
-  ```bash
-  python main.py "./docs/bao-cao.docx" --backend markitdown
-  ```
-
-* **Ép dùng Docling** (cho tài liệu PDF bảng biểu phức tạp offline):
-  ```bash
-  python main.py "./docs/tai-chinh.pdf" --backend docling
-  ```
-
-* **Ép dùng Gemini Vision trực tiếp:**
-  ```bash
-  python main.py "./docs/anh-chup.jpg" --backend gemini
-  ```
-
----
-
-### 7.4. Các Tùy Chọn Bổ Trợ Quan Trọng
-
-* **`--scanned`**: Đánh dấu tài liệu PDF chắc chắn là bản scan/ảnh chụp để bỏ qua bước kiểm tra text layer và đưa thẳng vào Hybrid OCR.
-* **`--rag-metadata`**: Bật chế độ tự động đính kèm YAML frontmatter chuẩn RAG ở đầu file.
-* **`--overwrite`**: Ghi đè file Markdown kết quả nếu file đã tồn tại trong thư mục `output/`.
-
----
-
-## 8. Định Dạng Kết Quả Xuất Ra (Chuẩn RAG Ingestion)
-
-Mỗi tài liệu xử lý sẽ được lưu vào: `output/{ten_file}/{ten_file}-{YYYY-MM-DD}.md`.
-
-Ví dụ nội dung file Markdown đầu ra:
-
-```markdown
----
-source_file: bao-cao-tai-chinh.pdf
-converted_at: 2026-08-19T22:50:02.123456
-pipeline: hybrid-2stage
-stage1_engine: paddleocr-vl
-stage2_verifier: "gemini-3.5-flash"
-total_pages: 2
-word_count: 530
----
-
-# BÁO CÁO KẾT QUẢ KINH DOANH NĂM 2026
-
-## 1. Tóm Tắt Chỉ Tiêu Tài Chính
-
-Dưới đây là bảng tổng hợp các chỉ tiêu kinh doanh trọng yếu theo từng quý:
-
-| Quý | Doanh Thu Kế Hoạch ($) | Doanh Thu Thực Tế ($) | Tỷ Lệ Hoàn Thành (%) |
-| :--- | :--- | :--- | :--- |
-| **Q1** | 2.500.000 | 2.680.000 | 107.2% |
-| **Q2** | 3.000.000 | 3.150.000 | 105.0% |
-| **Q3** | 3.200.000 | 3.400.000 | 106.25% |
-
-## 2. Công Thức Tính Tăng Trưởng & Rủi Ro
-
-Công thức định giá mô hình kỳ vọng:
-
-$$\sigma^2 = \sum_{i=1}^{n} p_i (x_i - \mu)^2 \quad \text{với} \quad \mu = \mathbb{E}[X]$$
+### 7.5. Chế Độ Kiểm Định Công Thức Nâng Cao (`--verify-formulas`)
+```bash
+# Bật kiểm định công thức toán học/hóa học phức tạp
+python main.py "./test_docs/toan_cao_cap.docx" --verify-formulas
 ```
 
 ---
 
-## 9. Cơ Chế Xử Lý Sự Cố & Tự Động Failover
+## 8. Tiện Ích Độc Lập: Obsidian Table Cleaner
 
-| Tình huống sự cố | Cơ chế xử lý của hệ thống |
-| :--- | :--- |
-| **Cấu hình máy tính quá yếu (RAM < 4GB)** | Hệ thống tự động bỏ qua khởi tạo PaddleOCR/PP-Structure để tránh tràn bộ nhớ (OOM) và tự chuyển sang **Online VLM OCR**. |
-| **Gemini báo lỗi Rate Limit 429 (Resource Exhausted)** | Hệ thống ghi log cảnh báo và retry với exponential backoff. |
-| **VLM không phản hồi** | Hệ thống tự động sử dụng bản nháp sạch từ **Stage 1 (PP-Structure / Docling)** mà không làm dừng chương trình. |
-| **PDF chứa font CID / font nhúng lỗi** | Bộ Router tự động nhận diện và chuyển hướng sang pipeline OCR hình ảnh. |
-| **Lỗi font chữ tiếng Việt trên console Windows** | Hệ thống tự động kích hoạt chế độ UTF-8 stream output để hiển thị chuẩn xác tiếng Việt. |
+Nếu bạn đã có sẵn các file Markdown xuất từ nguồn khác cần làm sạch bảng và chuẩn hóa LaTeX:
+```bash
+python tools/obsidian_table_cleaner.py "output/review/review.md" --mode table
+python tools/obsidian_table_cleaner.py "output/review/review.md" --mode callout
+```
 
 ---
 
-## 10. Tiện Ích Obsidian Table Cleaner
+## 9. Kiểm Thử Hệ Thống (Unit Tests)
 
-Công cụ hỗ trợ xử lý đặc biệt cho người dùng **Obsidian** khi crawl dữ liệu từ các file Excel (`.xlsx`, `.csv`). 
-Khi bảng chứa các ký tự đặc biệt như `|` trong biểu thức toán học hoặc code C, Obsidian có thể bị vỡ layout bảng.
+Hệ thống đi kèm bộ test suite toàn diện:
+```bash
+# Chạy toàn bộ test
+python -m unittest discover tests/ -v
 
-*   **Chế độ tích hợp (Auto):** Hệ thống tự động xử lý và làm sạch bảng. Bạn có thể sử dụng cờ `--obsidian-mode` để xuất ra định dạng mong muốn:
-    ```bash
-    # Xuất ra bảng Markdown chuẩn đã làm sạch
-    python main.py "./docs/data.xlsx" --obsidian-mode table
+# Chạy riêng kiểm thử Lớp 0 (Table Structure Fixer & Table Merging)
+python -m unittest tests/test_table_structure_fixer.py -v
 
-    # Xuất ra dạng thẻ ghi chú (Q&A Flashcard) kết hợp Callout của Obsidian (Khuyên dùng)
-    python main.py "./docs/data.xlsx" --obsidian-mode callout
-    ```
-*   **Chế độ độc lập (Standalone):** Làm sạch một file Markdown đã có sẵn:
-    ```bash
-    python tools/obsidian_table_cleaner.py "output\review\review.md" --mode callout
-    ```
+# Chạy kiểm thử bộ lọc Obsidian Sanitizer & Math Regex
+python -m unittest tests/test_obsidian_sanitizer.py -v
+```
 
 ---
 
-## 11. Cập Nhật Mới & Bug Fixes Gần Đây
+## 10. Giấy Phép (License)
 
-*   **Kiểm thử (Tests):** Bổ sung bộ unit test toàn diện `tests/test_smoke.py` bao phủ router, cli, config và mock cho backend.
-*   **Concurrency Fix:** Đã khắc phục lỗi chặn luồng (bottleneck) bằng cách dùng Semaphore phân vùng tài nguyên độc lập cho từng Backend.
-*   **Gemini Cache:** Sửa lỗi Race Condition khi tạo client của Google Gemini Vision API trong môi trường đa luồng.
-*   **CLI & Pathing:** Hỗ trợ chuẩn `BooleanOptionalAction` cho cờ `--rag-metadata`. Sửa lỗi sinh file name có chứa `{date}` gây lỗi hệ thống caching deduplication. Cải thiện fallback an toàn với text content ngắn (dưới 20 ký tự).
-
----
-
-## 12. Giấy Phép & Đóng Góp
-
-Dự án được phân phối dưới giấy phép mã nguồn mở **MIT License**. Mọi đóng góp (Pull Request, Báo lỗi Issue, Đề xuất tính năng) đều được chào đón!
+Dự án được phân phối dưới giấy phép **MIT License**.

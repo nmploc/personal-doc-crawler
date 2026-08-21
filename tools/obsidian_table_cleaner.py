@@ -1,7 +1,21 @@
 import os
+import sys
 import re
 import argparse
 from pathlib import Path
+
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
+def _split_table_row(stripped: str) -> list[str]:
+    """Split theo | nhưng bỏ qua \| đã escape và |= (toán tử bitwise)."""
+    inner = stripped.strip('|')
+    # Regex split trên | không đứng ngay sau backslash và không đứng trước =
+    parts = re.split(r'(?<!\\)\|(?![\=])', inner)
+    return [p.strip() for p in parts]
 
 def parse_markdown_table_rows(lines):
     """
@@ -16,9 +30,7 @@ def parse_markdown_table_rows(lines):
         stripped = line.strip()
         if stripped.startswith('|') and stripped.endswith('|'):
             in_table = True
-            # Split theo | nhưng cẩn thận với | đã được escape (\|)
-            # Tạm thời dùng split('|') rồi sau đó gộp lại nếu bị dư cột
-            parts = [p.strip() for p in stripped.strip('|').split('|')]
+            parts = _split_table_row(stripped)
             rows.append(parts)
         else:
             if in_table:
@@ -57,16 +69,21 @@ def format_math_and_code(text):
     # 1. Mathjax Abs
     text = re.sub(r'\\\|([^\|]+?)\\\|', r'$\\left| \1 \\right|$', text)
     # 2. Xử lý nhân
-    text = re.sub(r'(\w+)\s*\\\*\s*(\w+)', r'\1 \times \2', text)
-    text = re.sub(r'(\w+)\s*\*\s*(\w+)', r'\1 \times \2', text)
+    # Phép nhân có escape \* (MarkItDown / Excel export)
+    text = re.sub(r'(\w+)\s*\\\*\s*(\w+)', r'$\1 \\times \2$', text)
+    # Phép nhân thường * (chỉ áp dụng cho số hoặc biến số)
+    text = re.sub(r'\b(\d+)\s*\*\s*(\d+)\b', r'$\1 \\times \2$', text)
+    text = re.sub(r'\b([a-zA-Z_]\w*)\s*\*\s*(\d+)\b', r'$\1 \\times \2$', text)
+    text = re.sub(r'\b(\d+)\s*\*\s*([a-zA-Z_]\w*)\b', r'$\1 \\times \2$', text)
     # 3. Code bitwise
-    if re.search(r'(\b\w+\s*(\|=|&=|\^=|<<|>>)\s*[^A-Za-z]+)', text) and '`' not in text:
-        text = re.sub(r'(\b\w+\s*(?:\|=|&=|\^=|<<|>>)\s*[^A-Za-z]+)', r'`\1`', text)
+    bitwise_pattern = r'(\b\w+\s*(?:\|=|&=|\^=)\s*(?:\([^\\\|`\n\.,;]+\)|[0-9a-zA-Z_~]+)|\b\w+\s*(?:<<|>>)\s*\d+)'
+    if '`' not in text and re.search(bitwise_pattern, text):
+        text = re.sub(bitwise_pattern, r'`\1`', text)
     # 4. Đặc biệt
-    text = re.sub(r'2\^\(1/n\)', r'$2^{1/n}$', text)
-    text = text.replace('<=', '$\le$')
-    text = text.replace('>=', '$\ge$')
-    text = text.replace('±', '$\pm$')
+    text = re.sub(r'(\w+)\^\((\w+)/(\w+)\)', r'$\1^{\2/\3}$', text)
+    text = text.replace('<=', r'$\le$')
+    text = text.replace('>=', r'$\ge$')
+    text = text.replace('±', r'$\pm$')
     
     # Sửa underscore trong math (baud_thực -> \text{baud}_\text{thực})
     # Cái này khá phức tạp nếu làm bằng regex đơn giản, tạm thời để Obsidian handle hoặc thêm regex
@@ -83,53 +100,86 @@ def convert_to_table(cleaned_rows, expected_cols):
             lines.append("| " + " | ".join(formatted_row) + " |")
     return "\n".join(lines)
 
-def convert_to_callout(cleaned_rows):
+def convert_to_callout(cleaned_rows, expected_cols):
     lines = []
     for row in cleaned_rows[2:]:
-        if len(row) < 5:
+        if len(row) < expected_cols:
             continue
-        category, level, type_, question, answer = row[:5]
-        question = format_math_and_code(question)
-        answer = format_math_and_code(answer)
-        
-        callout = f"> [!question] [{category} - {level}] {question}\n"
-        callout += f"> **Type:** `{type_}`\n"
-        callout += f"> \n"
-        callout += f"> > [!success]- Answer\n"
-        
-        answer_lines = answer.split('<br>') if '<br>' in answer else [answer]
-        for al in answer_lines:
-            callout += f"> > {al.strip()}\n"
             
+        # Chỉ áp dụng schema Q&A khi đúng 5 cột — với schema khác, in dạng key: value chung
+        if expected_cols == 5:
+            category, level, type_, question, answer = row[:5]
+            callout = f"> [!question] [{category} - {level}] {format_math_and_code(question)}\n"
+            callout += f"> **Type:** `{type_}`\n> \n> > [!success]- Answer\n"
+            answer_text = format_math_and_code(answer)
+            for al in (answer_text.split('<br>') if '<br>' in answer_text else [answer_text]):
+                callout += f"> > {al.strip()}\n"
+        else:
+            # Fallback tổng quát: in mọi cột dưới dạng callout key:value
+            callout = f"> [!note] {row[0]}\n"
+            for cell in row[1:]:
+                callout += f"> {format_math_and_code(cell)}\n"
+
         lines.append(callout)
         lines.append("")
     return "\n".join(lines)
 
-def clean_markdown_table_content(content: str, output_mode='table') -> str:
-    """ API function to clean a markdown table string """
-    lines = content.splitlines()
-    rows, non_table_lines = parse_markdown_table_rows(lines)
-    
-    if not rows:
-        return content
-        
-    expected_cols = len(rows[0]) if rows else 5
-    
+def _clean_rows(rows, expected_cols):
+    """Tách riêng phần logic lọc/clean rows để tái sử dụng."""
     cleaned_rows = []
-    for i, row in enumerate(rows):
-        if set(row[0].replace('-', '').replace(':', '')) == set():
-            if i == 1:
+    for idx, row in enumerate(rows):
+        is_separator = bool(row[0]) and set(row[0].replace('-', '').replace(':', '')) == set()
+        if is_separator:
+            if idx == 1:
                 cleaned_rows.append(row[:expected_cols])
             continue
-            
         clean_row = clean_row_columns(row, expected_cols)
         if clean_row:
             cleaned_rows.append(clean_row)
-            
-    if output_mode == 'callout':
-        return convert_to_callout(cleaned_rows)
-    else:
-        return convert_to_table(cleaned_rows, expected_cols)
+    return cleaned_rows
+
+def clean_markdown_table_content(content: str, output_mode='table') -> str:
+    """
+    Duyệt qua từng dòng, giữ nguyên nội dung không phải bảng,
+    chỉ làm sạch riêng từng khối bảng markdown tìm thấy.
+    """
+    lines = content.splitlines()
+    output_lines = []
+    i = 0
+    n = len(lines)
+
+    while i < n:
+        line = lines[i]
+        stripped = line.strip()
+
+        if stripped.startswith('|') and stripped.endswith('|'):
+            # Bắt đầu một khối bảng — thu thập liên tục cho đến khi hết dòng bảng
+            table_block_lines = []
+            while i < n:
+                s = lines[i].strip()
+                if s.startswith('|') and s.endswith('|'):
+                    table_block_lines.append(lines[i])
+                    i += 1
+                else:
+                    break
+
+            rows, _ = parse_markdown_table_rows(table_block_lines)
+            if not rows:
+                output_lines.extend(table_block_lines)
+                continue
+
+            expected_cols = len(rows[0]) if rows else 5
+            cleaned_rows = _clean_rows(rows, expected_cols)
+
+            if output_mode == 'callout':
+                output_lines.append(convert_to_callout(cleaned_rows, expected_cols))
+            else:
+                output_lines.append(convert_to_table(cleaned_rows, expected_cols))
+        else:
+            output_lines.append(line)
+            i += 1
+
+    return "\n".join(output_lines)
 
 def process_file(input_path, output_mode='table'):
     input_path = Path(input_path)

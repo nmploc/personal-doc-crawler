@@ -37,10 +37,12 @@ PADDLE_LANG = os.getenv("PADDLE_LANG", "vi")  # 'vi', 'en', 'ch', etc.
 # --- VLM Verification Settings ---
 VLM_TIMEOUT_SECONDS = int(os.getenv("VLM_TIMEOUT_SECONDS", "45"))
 ENABLE_RAG_METADATA = os.getenv("ENABLE_RAG_METADATA", "true").lower() in ("true", "1", "yes")
+ENABLE_FORMULA_VERIFY = os.getenv("ENABLE_FORMULA_VERIFY", "false").lower() in ("true", "1", "yes")
 
 # --- CLI paths (đổi nếu không nằm trong PATH) ---
 MARKITDOWN_CMD = os.getenv("MARKITDOWN_CMD", "markitdown")
 DOCLING_CMD = os.getenv("DOCLING_CMD", "docling")
+LIBREOFFICE_CMD = os.getenv("LIBREOFFICE_CMD", "soffice")
 
 # --- Output ---
 OUTPUT_DIR = os.getenv("OUTPUT_DIR", "./output")
@@ -74,5 +76,13 @@ VLM_REFINE_PROMPT = (
     "4. Chuẩn hóa công thức toán học/hóa học sang định dạng LaTeX ($...$ cho inline, $$...$$ cho block).\n"
     "5. Giữ nguyên toàn bộ nội dung trung thực với ảnh gốc, KHÔNG tự ý tóm tắt, cắt xén hoặc thêm nội dung không có trong ảnh.\n"
     "6. Chỉ trả về duy nhất nội dung Markdown hoàn chỉnh đã được hiệu đính (không kèm lời chào hay giải thích)."
+)
+
+FORMULA_VERIFY_PROMPT = (
+    "Bạn là chuyên gia đối chiếu công thức toán học và bảng biểu. "
+    "Dưới đây là một phần ảnh của trang tài liệu và đoạn Markdown tương ứng chứa công thức hoặc bảng nghi ngờ bị lỗi OCR. "
+    "Hãy đối chiếu đoạn Markdown với nội dung trong ảnh và SỬA LẠI các công thức toán học bị hỏng (thành chuẩn LaTeX) "
+    "hoặc sửa lại cấu trúc bảng nếu cần. "
+    "Chỉ trả về đoạn Markdown sau khi đã sửa, không thêm bất kỳ lời giải thích nào."
 )
 
